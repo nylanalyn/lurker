@@ -13,6 +13,7 @@
       <span v-else-if="m.type === 'quit'" class="meta">⤫ {{ m.nick }} quit{{ m.text ? ' (' + m.text + ')' : '' }}</span>
       <span v-else-if="m.type === 'kick'" class="meta">⚠ {{ m.kicked }} kicked by {{ m.nick }}{{ m.text ? ' (' + m.text + ')' : '' }}</span>
       <span v-else-if="m.type === 'nick'" class="meta">{{ m.nick }} is now {{ m.newNick }}</span>
+      <span v-else-if="m.type === 'mode'" class="meta">mode by {{ m.nick }}:</span>
       <span v-else-if="m.type === 'topic'" class="meta">topic by {{ m.nick }}:</span>
       <span v-else-if="m.type === 'motd'" class="meta">[motd]</span>
       <span v-else-if="m.type === 'error'" class="meta error">[error]</span>

@@ -1,7 +1,19 @@
 import IRC from 'irc-framework';
 import { insertMessage } from '../db/messages.js';
 
-const PERSIST_TYPES = new Set(['message', 'action', 'notice', 'topic']);
+const PERSIST_TYPES = new Set([
+  'message', 'action', 'notice', 'topic',
+  'join', 'part', 'quit', 'kick', 'nick', 'mode',
+]);
+
+function extractExtras(event) {
+  switch (event.type) {
+    case 'kick': return { kicked: event.kicked };
+    case 'nick': return { newNick: event.newNick };
+    case 'mode': return { modes: event.modes };
+    default: return null;
+  }
+}
 
 export class IrcConnection {
   constructor({ network, onEvent }) {
@@ -39,6 +51,7 @@ export class IrcConnection {
         text: event.text,
         kind: event.kind,
         self: event.self,
+        extra: extractExtras(event),
       });
       enriched.id = id;
     }
@@ -151,6 +164,19 @@ export class IrcConnection {
       const ch = this.upsertChannel(event.channel);
       ch.topic = event.topic;
       this.publish({ type: 'topic', target: event.channel, nick: event.nick, text: event.topic });
+    });
+
+    c.on('mode', (event) => {
+      const target = event.target;
+      if (!target || !target.startsWith('#')) return;
+      const text = [event.raw_modes, ...(event.raw_params || [])].filter(Boolean).join(' ');
+      this.publish({
+        type: 'mode',
+        target,
+        nick: event.nick,
+        text,
+        modes: event.modes,
+      });
     });
 
     c.on('userlist', (event) => {

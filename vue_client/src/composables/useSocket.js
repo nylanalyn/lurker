@@ -49,6 +49,9 @@ function applyEvent(event) {
       buffers.setTopic(event.networkId, event.target, event.text);
       buffers.pushMessage(event);
       break;
+    case 'mode':
+      buffers.pushMessage(event);
+      break;
     case 'names':
       buffers.setMembers(event.networkId, event.target, event.members);
       break;

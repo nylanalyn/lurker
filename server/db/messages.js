@@ -1,8 +1,8 @@
 import db from './index.js';
 
 const insertStmt = db.prepare(`
-  INSERT INTO messages (network_id, target, time, type, nick, text, kind, self)
-  VALUES (@networkId, @target, @time, @type, @nick, @text, @kind, @self)
+  INSERT INTO messages (network_id, target, time, type, nick, text, kind, self, extra)
+  VALUES (@networkId, @target, @time, @type, @nick, @text, @kind, @self, @extra)
 `);
 
 export function insertMessage(row) {
@@ -15,12 +15,13 @@ export function insertMessage(row) {
     text: row.text ?? null,
     kind: row.kind ?? null,
     self: row.self ? 1 : 0,
+    extra: row.extra ? JSON.stringify(row.extra) : null,
   });
   return result.lastInsertRowid;
 }
 
 function rowToEvent(row) {
-  return {
+  const event = {
     id: row.id,
     networkId: row.network_id,
     target: row.target,
@@ -31,6 +32,12 @@ function rowToEvent(row) {
     kind: row.kind,
     self: !!row.self,
   };
+  if (row.extra) {
+    try {
+      Object.assign(event, JSON.parse(row.extra));
+    } catch (_) { /* ignore malformed */ }
+  }
+  return event;
 }
 
 export function listMessages(networkId, target, { before, limit = 50 } = {}) {

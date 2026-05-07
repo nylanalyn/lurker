@@ -72,6 +72,7 @@ function migrate() {
       text TEXT,
       kind TEXT,
       self INTEGER NOT NULL DEFAULT 0,
+      extra TEXT,
       FOREIGN KEY (network_id) REFERENCES networks(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_messages_buffer ON messages(network_id, target, id DESC);
@@ -92,7 +93,15 @@ function seedInitialUser() {
   console.log(`[db] Seeded initial user "${username}"`);
 }
 
+function ensureColumn(table, column, def) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.find((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
+  }
+}
+
 migrate();
+ensureColumn('messages', 'extra', 'TEXT');
 seedInitialUser();
 
 export default db;
