@@ -1,6 +1,8 @@
 <template>
-  <div v-if="text" class="typing">
-    <span class="who">{{ text }}</span>
+  <div v-if="segments.length" class="typing">
+    <span class="who">
+      <template v-for="(seg, i) in segments" :key="i"><span :style="seg.color ? { color: seg.color } : null">{{ seg.text }}</span></template>
+    </span>
     <span class="dots"><span></span><span></span><span></span></span>
   </div>
   <div v-else class="typing empty"></div>
@@ -10,6 +12,7 @@
 import { computed } from 'vue';
 import { useNetworksStore } from '../stores/networks.js';
 import { useBuffersStore } from '../stores/buffers.js';
+import { nickColor } from '../utils/nickColor.js';
 
 const networks = useNetworksStore();
 const buffers = useBuffersStore();
@@ -22,13 +25,23 @@ const nicks = computed(() => {
   return Object.keys(t);
 });
 
-const text = computed(() => {
+function nickSeg(nick) {
+  return { text: nick, color: nickColor(nick) };
+}
+
+const segments = computed(() => {
   const list = nicks.value;
-  if (list.length === 0) return '';
-  if (list.length === 1) return `${list[0]} is typing`;
-  if (list.length === 2) return `${list[0]} and ${list[1]} are typing`;
-  if (list.length === 3) return `${list[0]}, ${list[1]} and ${list[2]} are typing`;
-  return `${list[0]}, ${list[1]} and ${list.length - 2} others are typing`;
+  if (list.length === 0) return [];
+  if (list.length === 1) {
+    return [nickSeg(list[0]), { text: ' is typing' }];
+  }
+  if (list.length === 2) {
+    return [nickSeg(list[0]), { text: ' and ' }, nickSeg(list[1]), { text: ' are typing' }];
+  }
+  if (list.length === 3) {
+    return [nickSeg(list[0]), { text: ', ' }, nickSeg(list[1]), { text: ' and ' }, nickSeg(list[2]), { text: ' are typing' }];
+  }
+  return [nickSeg(list[0]), { text: ', ' }, nickSeg(list[1]), { text: ` and ${list.length - 2} others are typing` }];
 });
 </script>
 

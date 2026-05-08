@@ -5,9 +5,9 @@
     <p v-if="!messages.length" class="empty">No messages yet.</p>
     <div v-for="(m, i) in messages" :key="m.id ?? `live:${i}`" class="line" :class="lineClass(m)">
       <span class="time">{{ time(m.time) }}</span>
-      <span v-if="m.type === 'message'" class="nick" :class="{ self: m.self }">&lt;{{ m.nick }}&gt;</span>
-      <span v-else-if="m.type === 'action'" class="nick action">* {{ m.nick }}</span>
-      <span v-else-if="m.type === 'notice'" class="nick">-{{ m.nick }}-</span>
+      <span v-if="m.type === 'message'" class="nick" :class="{ self: m.self }" :style="nickStyle(m)">&lt;{{ m.nick }}&gt;</span>
+      <span v-else-if="m.type === 'action'" class="nick action" :class="{ self: m.self }" :style="nickStyle(m)">* {{ m.nick }}</span>
+      <span v-else-if="m.type === 'notice'" class="nick" :class="{ self: m.self }" :style="nickStyle(m)">-{{ m.nick }}-</span>
       <span v-else-if="m.type === 'join'" class="meta">→ {{ m.nick }} joined</span>
       <span v-else-if="m.type === 'part'" class="meta">← {{ m.nick }} left{{ m.text ? ' (' + m.text + ')' : '' }}</span>
       <span v-else-if="m.type === 'quit'" class="meta">⤫ {{ m.nick }} quit{{ m.text ? ' (' + m.text + ')' : '' }}</span>
@@ -27,6 +27,7 @@ import { ref, computed, watch, nextTick } from 'vue';
 import { useNetworksStore } from '../stores/networks.js';
 import { useBuffersStore } from '../stores/buffers.js';
 import { socketSend } from '../composables/useSocket.js';
+import { nickColor } from '../utils/nickColor.js';
 
 const networks = useNetworksStore();
 const buffers = useBuffersStore();
@@ -50,6 +51,12 @@ function lineClass(m) {
     [`type-${m.type}`]: true,
     self: m.self,
   };
+}
+
+function nickStyle(m) {
+  if (m.self) return null;
+  const c = nickColor(m.nick);
+  return c ? { color: c } : null;
 }
 
 function maybeRequestHistory() {
@@ -131,8 +138,8 @@ watch(() => networks.activeKey, async () => {
   font-style: italic;
 }
 .nick { color: var(--accent); }
+.nick.action { font-style: italic; }
 .nick.self { color: var(--good); }
-.nick.action { color: var(--warn); font-style: italic; }
 .meta { color: var(--fg-muted); font-style: italic; }
 .meta.error { color: var(--bad); }
 .text { white-space: pre-wrap; word-break: break-word; }
