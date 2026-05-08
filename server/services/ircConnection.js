@@ -114,7 +114,7 @@ export class IrcConnection {
 
     c.on('join', (event) => {
       const ch = this.upsertChannel(event.channel);
-      ch.members.add(event.nick);
+      ch.members.set(event.nick.toLowerCase(), { nick: event.nick, modes: [] });
       this.publish({ type: 'join', target: event.channel, nick: event.nick });
       if (event.nick === c.user.nick) {
         this.publish({ type: 'channel-joined', target: event.channel });
@@ -123,7 +123,7 @@ export class IrcConnection {
 
     c.on('part', (event) => {
       const ch = this.channels.get(event.channel.toLowerCase());
-      if (ch) ch.members.delete(event.nick);
+      if (ch) ch.members.delete(event.nick.toLowerCase());
       this.publish({ type: 'part', target: event.channel, nick: event.nick, text: event.message });
       if (event.nick === c.user.nick) {
         this.channels.delete(event.channel.toLowerCase());
@@ -133,7 +133,7 @@ export class IrcConnection {
 
     c.on('kick', (event) => {
       const ch = this.channels.get(event.channel.toLowerCase());
-      if (ch) ch.members.delete(event.kicked);
+      if (ch) ch.members.delete(event.kicked.toLowerCase());
       this.publish({
         type: 'kick',
         target: event.channel,
@@ -144,18 +144,22 @@ export class IrcConnection {
     });
 
     c.on('quit', (event) => {
-      for (const [name, ch] of this.channels) {
-        if (ch.members.delete(event.nick)) {
+      const lower = event.nick.toLowerCase();
+      for (const ch of this.channels.values()) {
+        if (ch.members.delete(lower)) {
           this.publish({ type: 'quit', target: ch.name, nick: event.nick, text: event.message });
         }
       }
     });
 
     c.on('nick', (event) => {
+      const oldLower = event.nick.toLowerCase();
+      const newLower = event.new_nick.toLowerCase();
       for (const ch of this.channels.values()) {
-        if (ch.members.has(event.nick)) {
-          ch.members.delete(event.nick);
-          ch.members.add(event.new_nick);
+        const member = ch.members.get(oldLower);
+        if (member) {
+          ch.members.delete(oldLower);
+          ch.members.set(newLower, { nick: event.new_nick, modes: member.modes });
           this.publish({ type: 'nick', target: ch.name, nick: event.nick, newNick: event.new_nick });
         }
       }
@@ -170,6 +174,25 @@ export class IrcConnection {
     c.on('mode', (event) => {
       const target = event.target;
       if (!target || !target.startsWith('#')) return;
+      const ch = this.channels.get(target.toLowerCase());
+      // Apply per-user prefix modes (+o/-o, +v/-v, etc.) to the member map so
+      // the snapshot keeps current modes after page reload.
+      let memberModesChanged = false;
+      if (ch) {
+        for (const m of (event.modes || [])) {
+          if (!m || !m.param) continue;
+          const sign = m.mode[0];
+          const letter = m.mode.slice(1);
+          if (!isPrefixMode(letter)) continue;
+          const member = ch.members.get(m.param.toLowerCase());
+          if (!member) continue;
+          const set = new Set(member.modes);
+          if (sign === '+') set.add(letter);
+          else set.delete(letter);
+          member.modes = [...set];
+          memberModesChanged = true;
+        }
+      }
       const text = [event.raw_modes, ...(event.raw_params || [])].filter(Boolean).join(' ');
       this.publish({
         type: 'mode',
@@ -178,11 +201,21 @@ export class IrcConnection {
         text,
         modes: event.modes,
       });
+      if (memberModesChanged && ch) {
+        this.publish({
+          type: 'names',
+          target: ch.name,
+          members: Array.from(ch.members.values()).map((m) => ({ nick: m.nick, modes: m.modes })),
+        });
+      }
     });
 
     c.on('userlist', (event) => {
       const ch = this.upsertChannel(event.channel);
-      ch.members = new Set(event.users.map((u) => u.nick));
+      ch.members.clear();
+      for (const u of event.users) {
+        ch.members.set(u.nick.toLowerCase(), { nick: u.nick, modes: u.modes || [] });
+      }
       this.publish({
         type: 'names',
         target: event.channel,
@@ -224,7 +257,7 @@ export class IrcConnection {
     const key = name.toLowerCase();
     let ch = this.channels.get(key);
     if (!ch) {
-      ch = { name, topic: null, members: new Set() };
+      ch = { name, topic: null, members: new Map() };
       this.channels.set(key, ch);
     }
     return ch;
@@ -275,8 +308,11 @@ export class IrcConnection {
       channels: Array.from(this.channels.values()).map((ch) => ({
         name: ch.name,
         topic: ch.topic,
-        members: Array.from(ch.members),
+        members: Array.from(ch.members.values()).map((m) => ({ nick: m.nick, modes: m.modes })),
       })),
     };
   }
 }
+
+const PREFIX_MODES = new Set(['q', 'a', 'o', 'h', 'v']);
+function isPrefixMode(letter) { return PREFIX_MODES.has(letter); }

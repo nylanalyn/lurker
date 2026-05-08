@@ -78,7 +78,12 @@ function applySnapshot(snapshot) {
   networks.applySnapshot(snapshot);
   for (const net of snapshot) {
     for (const ch of net.channels) {
-      buffers.setMembers(net.networkId, ch.name, ch.members.map((nick) => ({ nick, modes: [] })));
+      // Snapshot members are already { nick, modes } objects from the server.
+      // Tolerate the legacy plain-string shape in case an old snapshot is in flight.
+      const normalized = ch.members.map((m) =>
+        typeof m === 'string' ? { nick: m, modes: [] } : { nick: m.nick, modes: m.modes || [] }
+      );
+      buffers.setMembers(net.networkId, ch.name, normalized);
       buffers.setTopic(net.networkId, ch.name, ch.topic);
     }
   }

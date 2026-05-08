@@ -147,37 +147,43 @@ async function remove() {
 .modal {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
 }
 .card {
-  background: var(--bg-alt);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 24px;
-  width: 380px;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  padding: 16px 20px;
+  width: 400px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
-h2 { margin: 0; color: var(--accent); }
-label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--fg-muted); }
-label span { text-transform: uppercase; letter-spacing: 0.05em; }
+h2 {
+  margin: 0 0 4px;
+  color: var(--accent);
+  font-size: 14px;
+  text-transform: lowercase;
+  font-weight: 600;
+}
+label { display: flex; flex-direction: column; gap: 3px; color: var(--fg-muted); }
+label span { text-transform: uppercase; letter-spacing: 0.04em; font-size: 11px; }
+label input { color: var(--fg); }
 .row { display: flex; gap: 8px; align-items: end; }
 .grow { flex: 1; }
 .port { width: 80px; }
 .tls { width: 48px; align-items: center; }
-.tls input { transform: scale(1.2); }
+.tls input { transform: scale(1.1); }
 .check { flex-direction: row; align-items: center; gap: 8px; }
 .check input { width: auto; }
-.check span { text-transform: none; letter-spacing: normal; color: var(--fg); }
-.actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.check span { text-transform: none; letter-spacing: normal; color: var(--fg); font-size: inherit; }
+.actions { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .spacer { flex: 1; }
-.ghost { background: transparent; }
-.danger { background: transparent; color: var(--bad); border: 1px solid var(--bad); }
-.danger:hover:not(:disabled) { background: var(--bad); color: var(--bg); }
-.error { color: var(--bad); margin: 0; font-size: 13px; }
+.ghost { border-color: var(--border); }
+.danger { color: var(--bad); border-color: var(--bad); }
+.danger:hover:not(:disabled) { background: var(--bad); color: var(--bg); border-color: var(--bad); }
+.error { color: var(--bad); margin: 0; }
 </style>

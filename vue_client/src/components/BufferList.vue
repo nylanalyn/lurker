@@ -138,27 +138,30 @@ function toggleNet(_) {
 <style scoped>
 .buffer-list {
   flex: 1;
+  min-height: 0;
   overflow: auto;
-  padding: 8px 0;
+  padding: 4px 0;
 }
-.net { padding: 6px 0; border-bottom: 1px solid var(--border); }
+.net { padding: 4px 0 6px; }
+.net + .net { border-top: 1px solid var(--border); margin-top: 4px; }
 .net-head {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 12px;
-  font-size: 12px;
+  padding: 4px 10px;
   color: var(--fg-muted);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
+  cursor: pointer;
 }
 .name { flex: 1; color: var(--fg); }
-.hostnick { color: var(--fg); font-size: 11px; }
+.hostnick { color: var(--fg-muted); }
 .indicator {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--bad);
+  flex: 0 0 auto;
 }
 .indicator.good { background: var(--good); }
 .indicator.warn { background: var(--warn); }
@@ -169,7 +172,7 @@ function toggleNet(_) {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 12px;
+  padding: 2px 10px;
   cursor: pointer;
   border-left: 2px solid transparent;
 }
@@ -178,16 +181,18 @@ function toggleNet(_) {
   background: var(--bg-soft);
   border-left-color: var(--accent);
 }
-.channels li.unread .label { font-weight: 600; }
+.channels li.unread .label { font-weight: 600; color: var(--fg); }
 .channels li.server .label { color: var(--fg-muted); font-style: italic; }
-.bullet { color: var(--fg-muted); width: 12px; }
-.label { flex: 1; }
+.bullet { color: var(--fg-muted); width: 10px; text-align: center; }
+.label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .badge {
-  background: var(--accent-soft);
-  color: var(--fg);
-  border-radius: 10px;
-  padding: 0 6px;
-  font-size: 11px;
+  color: var(--accent);
+  padding: 0 2px;
 }
 .part {
   background: none;
@@ -195,7 +200,10 @@ function toggleNet(_) {
   color: var(--fg-muted);
   padding: 0 4px;
   cursor: pointer;
+  visibility: hidden;
 }
+.channels li:hover .part,
+.channels li.active .part { visibility: visible; }
 .part:hover { color: var(--bad); }
 
 .settings {
@@ -204,12 +212,11 @@ function toggleNet(_) {
   color: var(--fg-muted);
   padding: 0 2px;
   cursor: pointer;
-  font-size: 12px;
 }
 .settings:hover { color: var(--fg); }
 
-.add { padding: 4px 12px; }
-.add input { width: 100%; font-size: 12px; }
+.add { padding: 4px 10px; }
+.add input { width: 100%; }
 
-.empty { padding: 12px; color: var(--fg-muted); font-size: 12px; }
+.empty { padding: 12px; color: var(--fg-muted); font-style: italic; }
 </style>

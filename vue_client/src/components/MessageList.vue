@@ -148,24 +148,22 @@ watch(() => networks.activeKey, async () => {
 <style scoped>
 .message-list {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 8px 16px;
-  font-family: var(--mono);
-  font-size: 13px;
-  line-height: 1.5;
+  padding: 4px 12px;
+  line-height: 1.45;
 }
 .line {
   display: grid;
-  grid-template-columns: 50px max-content 1fr;
+  grid-template-columns: 44px max-content 1fr;
   gap: 8px;
-  padding: 1px 0;
+  padding: 0;
 }
-.line:hover { background: var(--bg-alt); }
-.time { color: var(--fg-muted); font-size: 12px; }
+.line:hover { background: var(--bg-soft); }
+.time { color: var(--fg-muted); }
 .loading {
   text-align: center;
   color: var(--fg-muted);
-  font-size: 11px;
   padding: 6px 0;
   font-style: italic;
 }

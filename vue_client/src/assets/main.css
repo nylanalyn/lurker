@@ -1,17 +1,27 @@
+/* Defaults match the settings registry; useTheme() overwrites :root vars
+   from settings.effective() once the store loads. Changing a default here
+   without changing settingsRegistry.js will only affect the very-first paint. */
 :root {
-  --bg: #1e1f29;
-  --bg-alt: #282a36;
-  --bg-soft: #343746;
-  --fg: #f8f8f2;
-  --fg-muted: #8a8d96;
-  --accent: #bd93f9;
-  --accent-soft: #6272a4;
-  --good: #50fa7b;
-  --warn: #f1fa8c;
-  --bad: #ff5555;
-  --border: #44475a;
-  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Brad's iTerm theme (Monokai Pro variant): #212022 / #fcfcfa */
+  --bg: #212022;
+  --bg-soft: #2c2a2e;
+  --fg: #fcfcfa;
+  --fg-muted: #939293;
+  --accent: #a99dec;
+  --good: #b3db82;
+  --warn: #f9d978;
+  --bad: #ed6c89;
+  --border: #2c2a2e;
+
+  /* Member-list mode prefix colors */
+  --member-owner:  #ed6c89;
+  --member-admin:  #fc9867;
+  --member-op:     #a99dec;
+  --member-halfop: #78dce8;
+  --member-voice:  #b3db82;
+
+  --mono: 'Input Mono', 'Input', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-size: 14px;
 }
 
 * { box-sizing: border-box; }
@@ -21,33 +31,49 @@ html, body, #app {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font-family: var(--sans);
-  font-size: 14px;
+  font-family: var(--mono);
+  font-size: var(--font-size);
 }
+
+/* Whole app behaves like a CLI window — no body-level scroll. */
+body { overflow: hidden; }
 
 a { color: var(--accent); }
 
 button {
   font: inherit;
-  background: var(--bg-soft);
+  background: transparent;
   color: var(--fg);
   border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 6px 12px;
+  border-radius: 0;
+  padding: 4px 10px;
   cursor: pointer;
 }
-button:hover { background: var(--accent-soft); }
+button:hover:not(:disabled) {
+  background: var(--bg-soft);
+  border-color: var(--accent);
+}
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 input, select, textarea {
   font: inherit;
-  background: var(--bg-alt);
+  background: var(--bg);
   color: var(--fg);
   border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 6px 8px;
+  border-radius: 0;
+  padding: 4px 8px;
 }
 input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--accent);
 }
+
+/* Subtle scrollbar that matches the flat aesthetic. */
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--bg-soft);
+  border: 2px solid var(--bg);
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--fg-muted); }
+* { scrollbar-color: var(--bg-soft) transparent; scrollbar-width: thin; }

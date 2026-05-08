@@ -158,36 +158,24 @@ async function onResetAll() {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: var(--bg);
-  color: var(--fg);
-  font-family: var(--sans);
 }
 .bar {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg-alt);
+  flex: 0 0 auto;
 }
-.bar h1 { margin: 0; font-size: 14px; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.05em; flex: 0 0 auto; }
-.bar .back { color: var(--accent); text-decoration: none; font-size: 13px; }
+.bar h1 { margin: 0; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.04em; flex: 0 0 auto; font-size: inherit; font-weight: 600; }
+.bar .back { color: var(--accent); text-decoration: none; }
 .bar .back:hover { color: var(--fg); }
-.bar .search {
-  flex: 1;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  color: var(--fg);
-  padding: 6px 10px;
-  border-radius: 4px;
-  font: inherit;
-}
-.bar .search:focus { outline: 1px solid var(--accent); }
+.bar .search { flex: 1; }
+.bar .search:focus { outline: none; border-color: var(--accent); }
 .bar .toggle {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
   color: var(--fg-muted);
 }
 .link {
@@ -198,18 +186,15 @@ async function onResetAll() {
   cursor: pointer;
   font: inherit;
 }
-.link:hover:not(:disabled) { color: var(--fg); }
+.link:hover:not(:disabled) { color: var(--fg); background: transparent; }
 .link:disabled { opacity: 0.4; cursor: not-allowed; }
 .link.danger { color: var(--bad); }
-.link.reset { font-size: 11px; }
 
 .error {
-  background: rgba(255, 85, 85, 0.1);
   color: var(--bad);
-  padding: 8px 16px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--border);
   margin: 0;
-  font-size: 13px;
 }
 .muted {
   text-align: center;
@@ -224,50 +209,35 @@ async function onResetAll() {
   padding: 0;
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
 }
 .row {
   display: grid;
-  grid-template-columns: 16px 1fr;
+  grid-template-columns: 14px 1fr;
   grid-template-areas:
     "marker head"
     ".      desc"
     ".      editor"
     ".      default";
-  gap: 4px 8px;
-  padding: 12px 16px;
+  gap: 2px 8px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border);
-  font-size: 13px;
 }
-.row:hover { background: var(--bg-alt); }
+.row:hover { background: var(--bg-soft); }
 .row.modified .key { color: var(--warn); }
 
-.marker { grid-area: marker; color: var(--warn); font-family: var(--mono); }
+.marker { grid-area: marker; color: var(--warn); }
 .head { grid-area: head; display: flex; align-items: center; gap: 10px; }
-.key { font-family: var(--mono); font-weight: 600; color: var(--accent); }
+.key { font-weight: 600; color: var(--accent); }
 .type {
-  font-size: 11px;
   color: var(--fg-muted);
-  background: var(--bg-soft);
-  padding: 1px 6px;
-  border-radius: 3px;
+  border: 1px solid var(--border);
+  padding: 0 4px;
   text-transform: lowercase;
 }
-.desc { grid-area: desc; color: var(--fg-muted); font-size: 12px; }
+.desc { grid-area: desc; color: var(--fg-muted); }
 
 .editor { grid-area: editor; margin-top: 4px; }
-.editor input[type="text"],
-.editor input[type="number"],
-.editor select,
-.editor textarea {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  color: var(--fg);
-  padding: 4px 8px;
-  border-radius: 4px;
-  font: inherit;
-  font-family: var(--mono);
-  font-size: 12px;
-}
 .editor input[type="text"],
 .editor select { min-width: 280px; }
 .editor input[type="number"] { width: 120px; }
@@ -279,17 +249,14 @@ async function onResetAll() {
 .editor .bool { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .editor .color-edit { display: flex; align-items: center; gap: 8px; }
 .editor .swatch {
-  width: 18px;
-  height: 18px;
-  border-radius: 3px;
+  width: 14px;
+  height: 14px;
   border: 1px solid var(--border);
   display: inline-block;
 }
-.default-line { grid-area: default; font-size: 11px; color: var(--fg-muted); }
+.default-line { grid-area: default; color: var(--fg-muted); }
 .default-line code {
-  font-family: var(--mono);
   background: var(--bg-soft);
-  padding: 1px 4px;
-  border-radius: 2px;
+  padding: 0 4px;
 }
 </style>

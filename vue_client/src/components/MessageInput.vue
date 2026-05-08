@@ -1,12 +1,14 @@
 <template>
   <form class="input" @submit.prevent="submit">
+    <span class="prompt">{{ promptLabel }}&nbsp;&gt;</span>
     <input
+      ref="inputEl"
       v-model="text"
       :placeholder="placeholder"
       :disabled="!active"
       autocomplete="off"
+      spellcheck="false"
     />
-    <button type="submit" :disabled="!active || !text.trim() || (isServer && !text.startsWith('/'))">Send</button>
   </form>
 </template>
 
@@ -17,14 +19,21 @@ import { socketSend } from '../composables/useSocket.js';
 
 const networks = useNetworksStore();
 const text = ref('');
+const inputEl = ref(null);
 
 const active = computed(() => networks.activeBuffer);
 const isServer = computed(() => active.value?.target?.startsWith(':server:'));
 const sendable = computed(() => !!active.value && !isServer.value);
 const placeholder = computed(() => {
-  if (!active.value) return 'Select a channel';
-  if (isServer.value) return 'Use /raw <line> here to send raw IRC';
-  return `Message ${active.value.target} (try /help)`;
+  if (!active.value) return 'Select a buffer';
+  if (isServer.value) return '/raw <line>';
+  return 'try /help';
+});
+const promptLabel = computed(() => {
+  const t = active.value?.target;
+  if (!t) return '[—]';
+  if (t.startsWith(':server:')) return '[server]';
+  return `[${t}]`;
 });
 
 let typingState = null;
@@ -160,10 +169,23 @@ function handleCommand(line, networkId, target) {
 <style scoped>
 .input {
   display: flex;
-  gap: 8px;
-  padding: 10px 16px;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
   border-top: 1px solid var(--border);
-  background: var(--bg-alt);
 }
-input { flex: 1; }
+.prompt {
+  color: var(--accent);
+  white-space: pre;
+  user-select: none;
+}
+input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 4px 0;
+  color: var(--fg);
+}
+input:focus { outline: none; }
+input::placeholder { color: var(--fg-muted); font-style: italic; }
 </style>

@@ -112,28 +112,33 @@ async function signOut() {
 <style scoped>
 .chat {
   display: grid;
-  grid-template-columns: 240px 1fr 200px;
+  grid-template-columns: 220px 1fr 180px;
+  grid-template-rows: 100vh;
   height: 100vh;
+  overflow: hidden;
 }
+/* min-height/min-width 0 lets flex/scrolling children stay inside the row. */
+.chat > * { min-width: 0; min-height: 0; }
+
 .sidebar {
-  background: var(--bg-alt);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
 }
 .sidebar-head {
-  padding: 12px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   gap: 8px;
 }
 .logo { color: var(--accent); font-weight: bold; flex: 1; }
+.status { font-size: 12px; }
 .status.on { color: var(--good); }
 .status.off { color: var(--bad); }
 .sidebar-foot {
   margin-top: auto;
-  padding: 12px;
+  padding: 8px 12px;
   border-top: 1px solid var(--border);
   display: flex;
   align-items: center;
@@ -155,22 +160,25 @@ async function signOut() {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
 }
 .topic {
-  padding: 10px 16px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg-alt);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  font-size: 12px;
 }
+.topic strong { font-weight: 600; }
 .topic-text { color: var(--fg-muted); margin-left: 8px; }
 .meta { font-size: 12px; color: var(--fg-muted); }
 
 .members {
-  background: var(--bg-alt);
   border-left: 1px solid var(--border);
-  overflow: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 </style>

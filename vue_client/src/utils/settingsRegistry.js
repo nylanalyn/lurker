@@ -3,14 +3,121 @@
 // supplies defaults during initial paint (before /api/settings/bootstrap returns).
 
 export const REGISTRY = Object.freeze([
+  // ─── Fonts ─────────────────────────────────────────────────────────────
+  {
+    key: 'look.font.family',
+    type: 'string',
+    default: "'Input Mono', 'Input', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+    description:
+      'Font family stack used everywhere in the UI. The first installed font wins. ' +
+      'Input Mono is the intended primary; the rest are system monospace fallbacks.',
+  },
+  {
+    key: 'look.font.size',
+    type: 'int',
+    min: 9,
+    max: 32,
+    default: 14,
+    description: 'Base font size in pixels for the whole UI.',
+  },
+
+  // ─── Core palette (Monokai Pro / Brad's iTerm theme) ───────────────────
+  {
+    key: 'look.color.bg',
+    type: 'color',
+    default: '#212022',
+    description: "Window background (every region uses this, like a CLI app).",
+  },
+  {
+    key: 'look.color.bg_soft',
+    type: 'color',
+    default: '#2c2a2e',
+    description: 'Slightly raised background used for hover and active-buffer highlight.',
+  },
+  {
+    key: 'look.color.fg',
+    type: 'color',
+    default: '#fcfcfa',
+    description: 'Default foreground / text color.',
+  },
+  {
+    key: 'look.color.fg_muted',
+    type: 'color',
+    default: '#939293',
+    description: 'Muted text (timestamps, system events, secondary labels).',
+  },
+  {
+    key: 'look.color.accent',
+    type: 'color',
+    default: '#a99dec',
+    description: 'Primary accent (links, logo, active-buffer indicator, focused borders).',
+  },
+  {
+    key: 'look.color.good',
+    type: 'color',
+    default: '#b3db82',
+    description: 'Positive / connected state.',
+  },
+  {
+    key: 'look.color.warn',
+    type: 'color',
+    default: '#f9d978',
+    description: 'Warning / in-progress state (connecting, modified setting marker).',
+  },
+  {
+    key: 'look.color.bad',
+    type: 'color',
+    default: '#ed6c89',
+    description: 'Error / disconnected / destructive state.',
+  },
+  {
+    key: 'look.color.border',
+    type: 'color',
+    default: '#2c2a2e',
+    description: 'Subtle horizontal/vertical separators between regions.',
+  },
+
+  // ─── Member-list mode prefixes ────────────────────────────────────────
+  {
+    key: 'look.color.member.owner',
+    type: 'color',
+    default: '#ed6c89',
+    description: 'Color for the ~ prefix (channel owner mode +q).',
+  },
+  {
+    key: 'look.color.member.admin',
+    type: 'color',
+    default: '#fc9867',
+    description: 'Color for the & prefix (channel admin mode +a).',
+  },
+  {
+    key: 'look.color.member.op',
+    type: 'color',
+    default: '#a99dec',
+    description: 'Color for the @ prefix (channel operator mode +o).',
+  },
+  {
+    key: 'look.color.member.halfop',
+    type: 'color',
+    default: '#78dce8',
+    description: 'Color for the % prefix (half-op mode +h).',
+  },
+  {
+    key: 'look.color.member.voice',
+    type: 'color',
+    default: '#b3db82',
+    description: 'Color for the + prefix (voiced mode +v).',
+  },
+
+  // ─── Nick coloring ────────────────────────────────────────────────────
   {
     key: 'look.nick.colors',
     type: 'string-list',
     default: [
-      '#5fafaf', '#5fafd7', '#87af5f', '#87afaf', '#87afd7', '#87d787',
-      '#af87af', '#afd787', '#d75f5f', '#d78787', '#d787d7', '#d7af5f',
-      '#d7afff', '#ff5f87', '#ff8700', '#ff8787', '#ffaf5f', '#ffd75f',
-      '#5f87af', '#5f87d7', '#5fafff', '#87afff', '#87d7ff',
+      '#ff6188', '#fc9867', '#ffd866', '#a9dc76', '#78dce8', '#ab9df2',
+      '#ed6c89', '#d4996e', '#f9d978', '#b3db82', '#91dae6', '#a99dec',
+      '#ff7494', '#ffaf75', '#c4e29a', '#a0f1ff', '#b6aaff',
+      '#7ba4ff', '#6799f3',
     ],
     description:
       "Palette of colors used to deterministically color other users' nicknames. " +
@@ -39,6 +146,8 @@ export const REGISTRY = Object.freeze([
     default: 'djb2-32',
     description: 'Hash algorithm used to map nicknames to palette colors.',
   },
+
+  // ─── Misc look ────────────────────────────────────────────────────────
   {
     key: 'look.action.italic',
     type: 'bool',

@@ -68,27 +68,37 @@ const sorted = computed(() => [...members.value].sort((a, b) => {
 </script>
 
 <style scoped>
-.members { display: flex; flex-direction: column; height: 100%; }
+.members { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 header {
-  padding: 10px 12px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--border);
-  font-size: 12px;
   color: var(--fg-muted);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   display: flex;
   justify-content: space-between;
+  flex: 0 0 auto;
 }
-ul { list-style: none; margin: 0; padding: 6px 0; overflow: auto; }
+ul {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
 li {
   display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 12px;
-  font-size: 13px;
+  align-items: baseline;
+  gap: 2px;
+  padding: 1px 10px;
 }
-.prefix { width: 12px; color: var(--fg-muted); }
-li.mode-\@ .prefix, li.mode-\~ .prefix, li.mode-\& .prefix { color: var(--accent); }
-li.mode-\+ .prefix { color: var(--good); }
-.nick { font-family: var(--mono); color: var(--accent); }
+li:hover { background: var(--bg-soft); }
+.prefix { width: 10px; text-align: center; color: var(--fg-muted); }
+li.mode-\~ .prefix { color: var(--member-owner); }
+li.mode-\& .prefix { color: var(--member-admin); }
+li.mode-\@ .prefix { color: var(--member-op); }
+li.mode-\% .prefix { color: var(--member-halfop); }
+li.mode-\+ .prefix { color: var(--member-voice); }
+.nick { color: var(--accent); }
 </style>

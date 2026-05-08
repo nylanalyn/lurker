@@ -50,18 +50,16 @@ async function submit() {
   justify-content: center;
 }
 .card {
-  background: var(--bg-alt);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 28px;
+  border: 1px solid var(--accent);
+  padding: 20px 24px;
   width: 320px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
-h1 { margin: 0; color: var(--accent); font-size: 28px; }
+h1 { margin: 0; color: var(--accent); font-size: 18px; font-weight: 600; }
 .subtitle { margin: 0; color: var(--fg-muted); }
-label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--fg-muted); }
-label span { text-transform: uppercase; letter-spacing: 0.05em; }
-.error { margin: 0; color: var(--bad); font-size: 13px; }
+label { display: flex; flex-direction: column; gap: 3px; color: var(--fg-muted); }
+label span { text-transform: uppercase; letter-spacing: 0.04em; font-size: 11px; }
+.error { margin: 0; color: var(--bad); }
 </style>
