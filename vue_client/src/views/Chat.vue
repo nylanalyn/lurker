@@ -13,19 +13,14 @@
       </div>
     </aside>
 
-    <main class="main">
-      <header v-if="active && topic" class="topic">
-        <div class="topic-text">{{ topic }}</div>
-      </header>
+    <header v-if="active && topic" class="topic">
+      <div class="topic-text">{{ topic }}</div>
+    </header>
 
-      <MessageList />
-      <StatusBar />
-      <MessageInput />
-    </main>
-
-    <aside v-if="active" class="members">
-      <MemberList />
-    </aside>
+    <MessageList />
+    <MemberList v-if="active" />
+    <StatusBar />
+    <MessageInput />
 
     <NetworkForm
       v-if="showNetworkForm"
@@ -91,17 +86,26 @@ async function signOut() {
 </script>
 
 <style scoped>
+/* WeeChat-style frame: the sidebar runs full height on the left; the topic,
+   status bar, and input each span the full width to the right of it; and
+   the message list + nicklist sit between them. */
 .chat {
   display: grid;
   grid-template-columns: 220px 1fr 180px;
-  grid-template-rows: 100vh;
+  grid-template-rows: auto 1fr auto auto;
+  grid-template-areas:
+    "sidebar topic    topic"
+    "sidebar messages members"
+    "sidebar status   status"
+    "sidebar input    input";
   height: 100vh;
   overflow: hidden;
 }
-/* min-height/min-width 0 lets flex/scrolling children stay inside the row. */
+/* min-height/min-width 0 lets flex/scrolling children stay inside their row. */
 .chat > * { min-width: 0; min-height: 0; }
 
 .sidebar {
+  grid-area: sidebar;
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -124,7 +128,6 @@ async function signOut() {
   align-items: center;
   gap: 8px;
 }
-.user { flex: 1; color: var(--fg-muted); }
 .link {
   background: none;
   border: none;
@@ -135,13 +138,8 @@ async function signOut() {
 }
 .link:hover { color: var(--fg); }
 
-.main {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-}
 .topic {
+  grid-area: topic;
   padding: 0 12px 1ch;
   border-bottom: 1px solid var(--border);
   display: flex;
@@ -149,14 +147,15 @@ async function signOut() {
   justify-content: space-between;
   gap: 16px;
 }
-.topic strong { font-weight: 600; }
 .topic-text { color: var(--fg-muted); }
-.meta { color: var(--fg-muted); }
 
-.members {
-  border-left: 1px solid var(--border);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
+/* These selectors target the root elements of the imported components.
+   Vue 3 scoped CSS attaches the parent's data-v attribute to a child
+   component's root element, so .message-list / .members / .status-bar /
+   .input here match the rendered roots of MessageList / MemberList /
+   StatusBar / MessageInput. */
+.message-list { grid-area: messages; }
+.members      { grid-area: members; border-left: 1px solid var(--border); }
+.status-bar   { grid-area: status; }
+.input        { grid-area: input; }
 </style>
