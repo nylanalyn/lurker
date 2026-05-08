@@ -1,5 +1,6 @@
 <template>
   <form class="input" @submit.prevent="submit">
+    <span class="clock">[{{ clock }}]</span>
     <span class="prompt">{{ promptLabel }}&nbsp;&gt;</span>
     <input
       ref="inputEl"
@@ -9,15 +10,20 @@
       autocomplete="off"
       spellcheck="false"
     />
+    <TypingIndicator class="typing" />
   </form>
 </template>
 
 <script setup>
-import { ref, computed, watch, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onBeforeUnmount, onMounted } from 'vue';
 import { useNetworksStore } from '../stores/networks.js';
+import { useSettingsStore } from '../stores/settings.js';
 import { socketSend } from '../composables/useSocket.js';
+import { formatTimestamp } from '../utils/timestamp.js';
+import TypingIndicator from './TypingIndicator.vue';
 
 const networks = useNetworksStore();
+const settings = useSettingsStore();
 const text = ref('');
 const inputEl = ref(null);
 
@@ -37,6 +43,13 @@ const promptLabel = computed(() => {
   const modes = state?.userModes || '';
   return modes ? `[${nick}(${modes})]` : `[${nick}]`;
 });
+
+const tsFormat = computed(() => settings.effective('look.bar.time_format') || 'HH:mm');
+const now = ref(new Date());
+let clockTimer = null;
+onMounted(() => { clockTimer = setInterval(() => { now.value = new Date(); }, 1000); });
+onBeforeUnmount(() => { if (clockTimer) clearInterval(clockTimer); });
+const clock = computed(() => formatTimestamp(now.value.toISOString(), tsFormat.value));
 
 let typingState = null;
 let lastActiveSentAt = 0;
@@ -172,9 +185,11 @@ function handleCommand(line, networkId, target) {
 .input {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 1ch;
   padding: 4px 12px;
+  border-top: 1px solid var(--border);
 }
+.clock { color: var(--fg-muted); }
 .prompt {
   color: var(--accent);
   white-space: pre;
@@ -182,6 +197,7 @@ function handleCommand(line, networkId, target) {
 }
 input {
   flex: 1;
+  min-width: 0;
   background: transparent;
   border: none;
   padding: 4px 0;
@@ -189,4 +205,5 @@ input {
 }
 input:focus { outline: none; }
 input::placeholder { color: var(--fg-muted); font-style: italic; }
+.typing { flex: 0 0 auto; }
 </style>
