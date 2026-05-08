@@ -157,14 +157,11 @@ function textSegments(m) {
   return nicks.splitText(m.text || '', nickSet.value, selfLower.value);
 }
 
-function maybeRequestHistory() {
+function requestMoreHistory() {
   const buf = buffer.value;
-  const el = scroller.value;
-  if (!buf || !el) return;
+  if (!buf) return;
   if (!buf.hasMore || buf.loadingHistory) return;
-  if (el.scrollTop > 80) return;
   if (buf.target.startsWith(':server:')) return;
-
   buffers.setLoadingHistory(buf.networkId, buf.target, true);
   const before = buf.oldestId ?? buf.messages[0]?.id;
   socketSend({
@@ -174,6 +171,26 @@ function maybeRequestHistory() {
     before,
     limit: 100,
   });
+}
+
+function maybeRequestHistory() {
+  const el = scroller.value;
+  if (!el) return;
+  if (el.scrollTop > 80) return;
+  requestMoreHistory();
+}
+
+// Fetch more history if the buffer's content doesn't fill the viewport.
+// On a tall window or after a buffer click, the initial backlog can be
+// shorter than clientHeight — there's no overflow, so onScroll never
+// fires, and the user can't reach the "top" to trigger a fetch through
+// normal scrolling. Recursive: each prepend triggers another check, and
+// fetching stops when we either have overflow or run out of history.
+function ensureViewportFilled() {
+  const el = scroller.value;
+  if (!el) return;
+  if (el.scrollHeight > el.clientHeight) return;
+  requestMoreHistory();
 }
 
 // Debounce timer for maybeRequestHistory. Trackpad scroll inertia keeps
@@ -245,6 +262,7 @@ watch(
       } else {
         el.scrollTop = el.scrollHeight - oldScrollHeight + oldScrollTop;
       }
+      ensureViewportFilled();
       return;
     }
     // Wholesale replace (fresh backlog from a re-snapshot): both ends shifted.
@@ -253,9 +271,11 @@ watch(
     if (replaced) {
       stickToBottom.value = true;
       scrollToBottom();
+      ensureViewportFilled();
       return;
     }
     if (stickToBottom.value && grew) scrollToBottom();
+    ensureViewportFilled();
   },
 );
 
@@ -263,6 +283,7 @@ watch(() => networks.activeKey, async () => {
   stickToBottom.value = true;
   await nextTick();
   scrollToBottom();
+  ensureViewportFilled();
 });
 </script>
 
@@ -285,13 +306,12 @@ watch(() => networks.activeKey, async () => {
      prepend watcher in <script setup> handles position preservation
      manually with a known-stable anchor (the OLD first message). */
   overflow-anchor: none;
-  /* Inset shadow draws on top of children's backgrounds, so the divider
-     against the topic header can't be visually eaten by .alt row paint
-     the way a plain border-top can on fractional-DPR displays. */
-  box-shadow: inset 0 1px 0 var(--border);
   padding: 4px 12px;
   display: grid;
-  grid-template-columns: max-content max-content minmax(0, 1fr);
+  /* Nick column has a 16ch floor (matching the most common modern NICKLEN)
+     so the layout is consistent across buffers regardless of who's talking,
+     and stretches if a network advertises a higher limit. */
+  grid-template-columns: max-content minmax(16ch, max-content) minmax(0, 1fr);
   grid-auto-rows: min-content;
   align-content: start;
   column-gap: 0;

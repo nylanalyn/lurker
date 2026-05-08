@@ -21,6 +21,7 @@
         <span class="topic-text">{{ topic }}</span>
       </template>
     </header>
+    <div v-if="active" class="topic-divider"></div>
 
     <MessageList />
     <MemberList v-if="active" />
@@ -108,9 +109,16 @@ async function signOut() {
 .chat {
   display: grid;
   grid-template-columns: 220px 1fr 180px;
-  grid-template-rows: auto 1fr auto;
+  /* The 1px row owns the topic/messages divider as its own grid track,
+     outside the scroll container. Putting the line inside .message-list
+     (border-top, inset box-shadow) lets row backgrounds and hover states
+     paint over it as content scrolls past — the line appears to be eaten
+     by the scrolling rows. A dedicated row sits between the two children
+     and nothing can paint on top of it. */
+  grid-template-rows: auto auto 1fr auto;
   grid-template-areas:
     "sidebar topic    topic"
+    "sidebar divider  divider"
     "sidebar messages members"
     "sidebar input    input";
   height: 100vh;
@@ -161,6 +169,11 @@ async function signOut() {
   gap: 1ch;
   white-space: nowrap;
   overflow: hidden;
+}
+.topic-divider {
+  grid-area: divider;
+  background: var(--border);
+  height: 1px;
 }
 .topic .buffer { color: var(--accent); }
 .topic .count  { color: var(--fg-muted); }
