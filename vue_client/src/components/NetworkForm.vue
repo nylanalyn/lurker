@@ -1,7 +1,7 @@
 <template>
   <div class="modal" @click.self="$emit('close')">
     <form class="card" @submit.prevent="submit">
-      <h2>Add network</h2>
+      <h2>{{ isEdit ? 'Edit network' : 'Add network' }}</h2>
       <label>
         <span>Name</span>
         <input v-model="form.name" placeholder="Libera" required />
@@ -30,7 +30,31 @@
       </label>
       <label>
         <span>Server password (optional)</span>
-        <input v-model="form.server_password" type="password" autocomplete="off" />
+        <input
+          v-model="form.server_password"
+          type="password"
+          autocomplete="off"
+          :placeholder="isEdit && props.network?.has_password ? '(saved — type to replace)' : ''"
+        />
+      </label>
+      <div class="row">
+        <label class="grow">
+          <span>SASL account (optional)</span>
+          <input v-model="form.sasl_account" :placeholder="form.nick || 'defaults to nick'" autocomplete="off" />
+        </label>
+        <label class="grow">
+          <span>SASL password (optional)</span>
+          <input
+            v-model="form.sasl_password"
+            type="password"
+            autocomplete="off"
+            :placeholder="isEdit && props.network?.has_sasl_password ? '(saved — type to replace)' : ''"
+          />
+        </label>
+      </div>
+      <label v-if="!isEdit">
+        <span>Default channel</span>
+        <input v-model="form.default_channel" placeholder="#caint" />
       </label>
       <label class="check">
         <input v-model="form.autoconnect" type="checkbox" />
@@ -38,29 +62,39 @@
       </label>
       <p v-if="error" class="error">{{ error }}</p>
       <div class="actions">
+        <button v-if="isEdit" type="button" class="danger" :disabled="loading" @click="remove">Delete</button>
+        <span class="spacer"></span>
         <button type="button" class="ghost" @click="$emit('close')">Cancel</button>
-        <button type="submit" :disabled="loading">{{ loading ? 'Saving…' : 'Save & connect' }}</button>
+        <button type="submit" :disabled="loading">{{ loading ? 'Saving…' : (isEdit ? 'Save' : 'Save & connect') }}</button>
       </div>
     </form>
   </div>
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue';
+import { reactive, ref, computed } from 'vue';
 import { useNetworksStore } from '../stores/networks.js';
 
+const props = defineProps({
+  network: { type: Object, default: null },
+});
 const emit = defineEmits(['close']);
 const networks = useNetworksStore();
 
+const isEdit = computed(() => !!props.network);
+
 const form = reactive({
-  name: '',
-  host: '',
-  port: 6697,
-  tls: true,
-  nick: '',
-  realname: '',
+  name: props.network?.name ?? '',
+  host: props.network?.host ?? '',
+  port: props.network?.port ?? 6697,
+  tls: props.network ? !!props.network.tls : true,
+  nick: props.network?.nick ?? '',
+  realname: props.network?.realname ?? '',
   server_password: '',
-  autoconnect: true,
+  sasl_account: props.network?.sasl_account ?? '',
+  sasl_password: '',
+  default_channel: '#caint',
+  autoconnect: props.network ? !!props.network.autoconnect : true,
 });
 
 const loading = ref(false);
@@ -70,11 +104,40 @@ async function submit() {
   loading.value = true;
   error.value = null;
   try {
-    await networks.create({ ...form });
+    if (isEdit.value) {
+      const patch = {
+        name: form.name,
+        host: form.host,
+        port: form.port,
+        tls: form.tls,
+        nick: form.nick,
+        realname: form.realname,
+        sasl_account: form.sasl_account,
+        autoconnect: form.autoconnect,
+      };
+      if (form.server_password) patch.server_password = form.server_password;
+      if (form.sasl_password) patch.sasl_password = form.sasl_password;
+      await networks.update(props.network.id, patch);
+    } else {
+      await networks.create({ ...form });
+    }
     emit('close');
   } catch (err) {
     error.value = err.message || 'failed to save network';
   } finally {
+    loading.value = false;
+  }
+}
+
+async function remove() {
+  if (!confirm(`Delete network "${props.network.name}"? This disconnects and removes its history.`)) return;
+  loading.value = true;
+  error.value = null;
+  try {
+    await networks.remove(props.network.id);
+    emit('close');
+  } catch (err) {
+    error.value = err.message || 'failed to delete network';
     loading.value = false;
   }
 }
@@ -111,7 +174,10 @@ label span { text-transform: uppercase; letter-spacing: 0.05em; }
 .check { flex-direction: row; align-items: center; gap: 8px; }
 .check input { width: auto; }
 .check span { text-transform: none; letter-spacing: normal; color: var(--fg); }
-.actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.spacer { flex: 1; }
 .ghost { background: transparent; }
+.danger { background: transparent; color: var(--bad); border: 1px solid var(--bad); }
+.danger:hover:not(:disabled) { background: var(--bad); color: var(--bg); }
 .error { color: var(--bad); margin: 0; font-size: 13px; }
 </style>

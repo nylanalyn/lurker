@@ -57,6 +57,13 @@ export function listRecentForBuffers(networkId, targets, perBuffer = 50) {
   return out;
 }
 
+export function listBufferTargets(networkId) {
+  return db
+    .prepare('SELECT DISTINCT target FROM messages WHERE network_id = ? ORDER BY target')
+    .all(networkId)
+    .map((r) => r.target);
+}
+
 export function countOlder(networkId, target, beforeId) {
   return db.prepare(
     `SELECT COUNT(*) AS n FROM messages WHERE network_id = ? AND target = ? AND id < ?`

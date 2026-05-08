@@ -7,6 +7,7 @@ import {
   updateNetwork,
   deleteNetwork,
   listChannels,
+  upsertChannel,
 } from '../db/networks.js';
 import ircManager from '../services/ircManager.js';
 
@@ -15,12 +16,13 @@ router.use(requireAuth);
 
 function networkPayload(network) {
   if (!network) return null;
-  const { server_password, ...safe } = network;
+  const { server_password, sasl_password, ...safe } = network;
   return {
     ...safe,
     tls: !!network.tls,
     autoconnect: !!network.autoconnect,
     has_password: !!server_password,
+    has_sasl_password: !!sasl_password,
     channels: listChannels(network.id),
   };
 }
@@ -31,12 +33,18 @@ router.get('/', (req, res) => {
 });
 
 router.post('/', (req, res) => {
-  const { name, host, port, tls, nick, username, realname, server_password, autoconnect } = req.body || {};
+  const {
+    name, host, port, tls, nick, username, realname, server_password,
+    autoconnect, sasl_account, sasl_password, default_channel,
+  } = req.body || {};
   if (!name || !host || !nick) return res.status(400).json({ error: 'name, host, and nick are required' });
 
   const network = createNetwork(req.user.id, {
-    name, host, port, tls, nick, username, realname, server_password, autoconnect,
+    name, host, port, tls, nick, username, realname, server_password,
+    autoconnect, sasl_account, sasl_password,
   });
+  const channel = (default_channel || '').trim();
+  if (channel) upsertChannel(network.id, channel, true);
   if (network.autoconnect) ircManager.startNetwork(req.user.id, network.id);
   res.status(201).json({ network: networkPayload(network) });
 });
@@ -53,7 +61,7 @@ router.delete('/:id', (req, res) => {
   const id = Number(req.params.id);
   const existing = getNetwork(id, req.user.id);
   if (!existing) return res.status(404).json({ error: 'network not found' });
-  ircManager.stopNetwork(req.user.id, id, 'network removed');
+  ircManager.disposeNetwork(req.user.id, id, 'network removed');
   deleteNetwork(id, req.user.id);
   res.json({ ok: true });
 });

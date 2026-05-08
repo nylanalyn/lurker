@@ -4,7 +4,7 @@ import cookieParser from 'cookie-parser';
 import ircManager from './ircManager.js';
 import { findSession } from '../db/sessions.js';
 import { findUserById } from '../db/users.js';
-import { listMessages } from '../db/messages.js';
+import { listMessages, listBufferTargets } from '../db/messages.js';
 import { SESSION_COOKIE } from '../middleware/auth.js';
 
 export function attachWsHub(httpServer, sessionSecret) {
@@ -92,16 +92,17 @@ export function attachWsHub(httpServer, sessionSecret) {
     const networks = ircManager.snapshotForUser(userId);
     send(ws, { kind: 'snapshot', networks });
     for (const conn of ircManager.listConnections(userId)) {
-      for (const ch of conn.channels.values()) {
-        const events = listMessages(conn.network.id, ch.name, { limit: 50 });
-        if (events.length) {
-          send(ws, {
-            kind: 'backlog',
-            networkId: conn.network.id,
-            target: ch.name,
-            events,
-          });
-        }
+      const targets = new Set(listBufferTargets(conn.network.id));
+      targets.add(`:server:${conn.network.id}`);
+      for (const ch of conn.channels.values()) targets.add(ch.name);
+      for (const target of targets) {
+        const events = listMessages(conn.network.id, target, { limit: 50 });
+        send(ws, {
+          kind: 'backlog',
+          networkId: conn.network.id,
+          target,
+          events,
+        });
       }
     }
   }

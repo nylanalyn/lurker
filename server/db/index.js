@@ -102,6 +102,8 @@ function ensureColumn(table, column, def) {
 
 migrate();
 ensureColumn('messages', 'extra', 'TEXT');
+ensureColumn('networks', 'sasl_account', 'TEXT');
+ensureColumn('networks', 'sasl_password', 'TEXT');
 seedInitialUser();
 
 export default db;

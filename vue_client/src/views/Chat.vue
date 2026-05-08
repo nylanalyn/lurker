@@ -4,9 +4,9 @@
       <div class="sidebar-head">
         <span class="logo">caint</span>
         <span class="status" :class="{ on: connected, off: !connected }">{{ connected ? '●' : '○' }}</span>
-        <button class="link" @click="showNetworkForm = true" title="Add network">+</button>
+        <button class="link" @click="openAddNetwork" title="Add network">+</button>
       </div>
-      <BufferList />
+      <BufferList @edit-network="openEditNetwork" />
       <div class="sidebar-foot">
         <span class="user">{{ auth.user?.username }}</span>
         <button class="link" @click="signOut">sign out</button>
@@ -34,7 +34,11 @@
       <MemberList />
     </aside>
 
-    <NetworkForm v-if="showNetworkForm" @close="showNetworkForm = false" />
+    <NetworkForm
+      v-if="showNetworkForm"
+      :network="editingNetwork"
+      @close="closeNetworkForm"
+    />
   </div>
 </template>
 
@@ -60,7 +64,21 @@ const router = useRouter();
 const { connected } = useSocket();
 
 const showNetworkForm = ref(false);
+const editingNetwork = ref(null);
 const { activeKey } = storeToRefs(networks);
+
+function openAddNetwork() {
+  editingNetwork.value = null;
+  showNetworkForm.value = true;
+}
+function openEditNetwork(net) {
+  editingNetwork.value = net;
+  showNetworkForm.value = true;
+}
+function closeNetworkForm() {
+  showNetworkForm.value = false;
+  editingNetwork.value = null;
+}
 
 const active = computed(() => networks.activeBuffer);
 const activeBuf = computed(() => (activeKey.value ? buffers.byKey(activeKey.value) : null));

@@ -5,6 +5,11 @@
         <span class="indicator" :class="stateClass(net.id)"></span>
         <span class="name">{{ net.name }}</span>
         <span class="hostnick">{{ networks.states[net.id]?.nick || net.nick }}</span>
+        <button
+          class="settings"
+          title="Edit network"
+          @click.stop="$emit('edit-network', net)"
+        >⚙</button>
       </div>
       <ul class="channels">
         <li
@@ -45,6 +50,8 @@ import { reactive } from 'vue';
 import { useNetworksStore } from '../stores/networks.js';
 import { useBuffersStore } from '../stores/buffers.js';
 import { socketSend } from '../composables/useSocket.js';
+
+defineEmits(['edit-network']);
 
 const networks = useNetworksStore();
 const buffers = useBuffersStore();
@@ -176,6 +183,16 @@ function toggleNet(_) {
   cursor: pointer;
 }
 .part:hover { color: var(--bad); }
+
+.settings {
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  padding: 0 2px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.settings:hover { color: var(--fg); }
 
 .add { padding: 4px 12px; }
 .add input { width: 100%; font-size: 12px; }

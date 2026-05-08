@@ -1,9 +1,8 @@
 import IRC from 'irc-framework';
 import { insertMessage } from '../db/messages.js';
 
-const PERSIST_TYPES = new Set([
-  'message', 'action', 'notice', 'topic',
-  'join', 'part', 'quit', 'kick', 'nick', 'mode',
+const NON_PERSISTED_TYPES = new Set([
+  'state', 'names', 'channel-joined', 'channel-parted', 'typing',
 ]);
 
 function extractExtras(event) {
@@ -23,16 +22,17 @@ export class IrcConnection {
     this.client.requestCap('message-tags');
     this.state = 'disconnected';
     this.channels = new Map();
+    this.disposed = false;
     this.bind();
   }
 
   shouldPersist(event) {
     if (!event.target) return false;
-    if (event.target.startsWith(':server:')) return false;
-    return PERSIST_TYPES.has(event.type);
+    return !NON_PERSISTED_TYPES.has(event.type);
   }
 
   publish(event) {
+    if (this.disposed) return;
     const time = event.time || new Date().toISOString();
     const enriched = {
       ...event,
@@ -60,6 +60,7 @@ export class IrcConnection {
   }
 
   publishEphemeral(event) {
+    if (this.disposed) return;
     this.onEvent({
       ...event,
       userId: this.network.user_id,
@@ -83,7 +84,7 @@ export class IrcConnection {
     c.on('connecting', () => this.setState('connecting'));
 
     c.on('motd', (event) => {
-      this.publish({ type: 'motd', text: event.motd });
+      this.publish({ type: 'motd', target: this.serverTarget(), text: event.motd });
     });
 
     c.on('message', (event) => {
@@ -190,7 +191,12 @@ export class IrcConnection {
     });
 
     c.on('irc error', (event) => {
-      this.publish({ type: 'error', text: event.error || event.reason || 'IRC error', raw: event });
+      this.publish({
+        type: 'error',
+        target: this.serverTarget(),
+        text: event.error || event.reason || 'IRC error',
+        raw: event,
+      });
     });
 
     c.on('tagmsg', (event) => {
@@ -210,6 +216,10 @@ export class IrcConnection {
     });
   }
 
+  serverTarget() {
+    return `:server:${this.network.id}`;
+  }
+
   upsertChannel(name) {
     const key = name.toLowerCase();
     let ch = this.channels.get(key);
@@ -221,14 +231,19 @@ export class IrcConnection {
   }
 
   connect() {
+    const { sasl_password, sasl_account, nick } = this.network;
+    const account = sasl_password
+      ? { account: sasl_account || nick, password: sasl_password }
+      : undefined;
     this.client.connect({
       host: this.network.host,
       port: this.network.port,
       tls: !!this.network.tls,
-      nick: this.network.nick,
-      username: this.network.username || this.network.nick,
-      gecos: this.network.realname || this.network.nick,
+      nick,
+      username: this.network.username || nick,
+      gecos: this.network.realname || nick,
       password: this.network.server_password || undefined,
+      account,
       auto_reconnect: true,
       auto_reconnect_max_retries: 0,
     });
@@ -245,6 +260,11 @@ export class IrcConnection {
 
   disconnect(reason = 'caint shutting down') {
     this.client.quit(reason);
+  }
+
+  dispose(reason = 'network removed') {
+    this.disposed = true;
+    try { this.client.quit(reason); } catch (_) { /* ignore */ }
   }
 
   snapshot() {

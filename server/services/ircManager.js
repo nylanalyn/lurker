@@ -65,6 +65,13 @@ class IrcManager extends EventEmitter {
     this._userMap(userId).delete(networkId);
   }
 
+  disposeNetwork(userId, networkId, reason) {
+    const conn = this.getConnection(userId, networkId);
+    if (!conn) return;
+    conn.dispose(reason);
+    this._userMap(userId).delete(networkId);
+  }
+
   joinChannel(userId, networkId, name) {
     const conn = this.getConnection(userId, networkId);
     if (!conn) return false;

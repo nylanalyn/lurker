@@ -9,10 +9,10 @@ export function getNetwork(id, userId) {
 }
 
 export function createNetwork(userId, fields) {
-  const { name, host, port, tls, nick, username, realname, server_password, autoconnect } = fields;
+  const { name, host, port, tls, nick, username, realname, server_password, autoconnect, sasl_account, sasl_password } = fields;
   const result = db.prepare(`
-    INSERT INTO networks (user_id, name, host, port, tls, nick, username, realname, server_password, autoconnect)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO networks (user_id, name, host, port, tls, nick, username, realname, server_password, autoconnect, sasl_account, sasl_password)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     userId,
     name,
@@ -24,12 +24,14 @@ export function createNetwork(userId, fields) {
     realname || null,
     server_password || null,
     autoconnect === false ? 0 : 1,
+    sasl_account || null,
+    sasl_password || null,
   );
   return getNetwork(result.lastInsertRowid, userId);
 }
 
 export function updateNetwork(id, userId, fields) {
-  const allowed = ['name', 'host', 'port', 'tls', 'nick', 'username', 'realname', 'server_password', 'autoconnect'];
+  const allowed = ['name', 'host', 'port', 'tls', 'nick', 'username', 'realname', 'server_password', 'autoconnect', 'sasl_account', 'sasl_password'];
   const setClauses = [];
   const params = [];
   for (const key of allowed) {

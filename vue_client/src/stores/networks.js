@@ -35,6 +35,8 @@ export const useNetworksStore = defineStore('networks', {
     async remove(id) {
       await api(`/api/networks/${id}`, { method: 'DELETE' });
       this.networks = this.networks.filter((n) => n.id !== id);
+      delete this.states[id];
+      if (this.activeKey?.startsWith(`${id}::`)) this.activeKey = null;
     },
     async connect(id) {
       await api(`/api/networks/${id}/connect`, { method: 'POST' });
