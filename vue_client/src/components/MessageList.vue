@@ -7,31 +7,31 @@
     <div v-if="!buffer?.hasMore && messages.length" class="notice">— start of history —</div>
     <p v-if="!messages.length" class="notice empty">No messages yet.</p>
     <div
-      v-for="(m, i) in messages"
-      :key="m.id ?? `live:${i}`"
+      v-for="row in renderRows"
+      :key="row.key"
       class="line"
-      :class="lineClass(m, i)"
-      :data-msg-id="m.id ?? null"
+      :class="rowClass(row)"
+      :data-msg-id="row.m.id ?? null"
     >
-      <span class="time">{{ time(m.time) }}</span>
-      <span class="prefix" :class="prefixClass(m)" :style="prefixStyle(m)">{{ prefixText(m) }}</span>
-      <span class="body" :class="bodyClass(m)">
-        <template v-if="hasInlineText(m)">
-          <template v-for="(seg, j) in textSegments(m)" :key="j">
+      <span class="time">{{ time(row.m.time) }}</span>
+      <span class="prefix" :class="prefixClass(row.m)" :style="prefixStyle(row.m)">{{ prefixText(row.m) }}</span>
+      <span class="body" :class="bodyClass(row.m)">
+        <template v-if="hasInlineText(row.m)">
+          <template v-for="(seg, j) in textSegments(row.m)" :key="j">
             <span v-if="seg.color" :style="{ color: seg.color }">{{ seg.text }}</span>
             <span v-else-if="seg.self" :style="{ color: selfColor }">{{ seg.text }}</span>
             <template v-else>{{ seg.text }}</template>
           </template>
         </template>
-        <template v-else-if="m.type === 'join'"><NickRef :nick="m.nick" /> joined</template>
-        <template v-else-if="m.type === 'part'"><NickRef :nick="m.nick" /> left<template v-if="m.text"> ({{ m.text }})</template></template>
-        <template v-else-if="m.type === 'quit'"><NickRef :nick="m.nick" /> quit<template v-if="m.text"> ({{ m.text }})</template></template>
-        <template v-else-if="m.type === 'kick'"><NickRef :nick="m.kicked" /> kicked by <NickRef :nick="m.nick" /><template v-if="m.text"> ({{ m.text }})</template></template>
-        <template v-else-if="m.type === 'nick'"><NickRef :nick="m.nick" /> is now <NickRef :nick="m.newNick" /></template>
-        <template v-else-if="m.type === 'mode'">mode by <NickRef :nick="m.nick" />{{ m.text ? ': ' + m.text : '' }}</template>
-        <template v-else-if="m.type === 'topic'">topic set by <NickRef :nick="m.nick" /><template v-if="m.text">: {{ m.text }}</template></template>
-        <template v-else-if="m.type === 'motd'">{{ m.text }}</template>
-        <template v-else-if="m.type === 'error'">{{ m.text }}</template>
+        <template v-else-if="row.m.type === 'join'"><NickRef :nick="row.m.nick" /> joined</template>
+        <template v-else-if="row.m.type === 'part'"><NickRef :nick="row.m.nick" /> left<template v-if="row.m.text"> ({{ row.m.text }})</template></template>
+        <template v-else-if="row.m.type === 'quit'"><NickRef :nick="row.m.nick" /> quit<template v-if="row.m.text"> ({{ row.m.text }})</template></template>
+        <template v-else-if="row.m.type === 'kick'"><NickRef :nick="row.m.kicked" /> kicked by <NickRef :nick="row.m.nick" /><template v-if="row.m.text"> ({{ row.m.text }})</template></template>
+        <template v-else-if="row.m.type === 'nick'"><NickRef :nick="row.m.nick" /> is now <NickRef :nick="row.m.newNick" /></template>
+        <template v-else-if="row.m.type === 'mode'">mode by <NickRef :nick="row.m.nick" />{{ row.m.text ? ': ' + row.m.text : '' }}</template>
+        <template v-else-if="row.m.type === 'topic'">topic set by <NickRef :nick="row.m.nick" /><template v-if="row.m.text">: {{ row.m.text }}</template></template>
+        <template v-else-if="row.m.type === 'motd'">{{ row.m.text }}</template>
+        <template v-else-if="row.m.type === 'error'">{{ row.m.text }}</template>
       </span>
     </div>
   </div>
@@ -88,13 +88,70 @@ function time(iso) {
   return formatTimestamp(iso, tsFormat.value);
 }
 
-function lineClass(m, i) {
+function rowClass(row) {
   return {
-    [`type-${m.type}`]: true,
-    self: m.self,
-    alt: i % 2 === 1,
+    [`type-${row.m.type}`]: true,
+    self: row.m.self,
+    alt: row.alt,
   };
 }
+
+const smartFilterEnabled = computed(() => !!settings.effective('chat.smart_filter'));
+const smartFilterDelayMs = computed(() => (settings.effective('chat.smart_filter_delay') || 0) * 60_000);
+const smartFilterUnmaskMs = computed(() => (settings.effective('chat.smart_filter_join_unmask') || 0) * 60_000);
+const smartFilterJoin = computed(() => !!settings.effective('chat.smart_filter_join'));
+const smartFilterQuit = computed(() => !!settings.effective('chat.smart_filter_quit'));
+const smartFilterNick = computed(() => !!settings.effective('chat.smart_filter_nick'));
+
+// One-pass walk over messages to (a) decide which rows the smart filter
+// should hide and (b) compute alt-row striping that only counts visible
+// rows. Reactive on settings + buf.speakers, so unmasking happens for
+// free when a quiet nick speaks.
+const renderRows = computed(() => {
+  const list = messages.value;
+  const buf = buffer.value;
+  const out = [];
+  let parity = 0;
+
+  const filterOn = smartFilterEnabled.value && !!buf?.speakers;
+  const ownNickLc = selfLower.value;
+  const delayMs = smartFilterDelayMs.value;
+  const unmaskMs = smartFilterUnmaskMs.value;
+  const fJoin = smartFilterJoin.value;
+  const fQuit = smartFilterQuit.value;
+  const fNick = smartFilterNick.value;
+
+  for (let i = 0; i < list.length; i++) {
+    const m = list[i];
+    const key = m.id ?? `live:${i}`;
+    let hidden = false;
+
+    if (filterOn && m.nick && !m.self) {
+      const filterable =
+        (m.type === 'join' && fJoin) ||
+        ((m.type === 'part' || m.type === 'quit') && fQuit) ||
+        (m.type === 'nick' && fNick);
+      if (filterable && m.nick.toLowerCase() !== ownNickLc) {
+        const lastSpoke = buf.speakers[m.nick.toLowerCase()]?.lastTime;
+        const eventTime = Date.parse(m.time) || 0;
+        const recentlySpoke = lastSpoke != null
+          && lastSpoke <= eventTime
+          && (eventTime - lastSpoke) <= delayMs;
+        const unmasked = m.type === 'join'
+          && unmaskMs > 0
+          && lastSpoke != null
+          && lastSpoke > eventTime
+          && (lastSpoke - eventTime) <= unmaskMs;
+        if (!recentlySpoke && !unmasked) hidden = true;
+      }
+    }
+
+    if (hidden) continue;
+    out.push({ m, alt: parity === 1, key });
+    parity ^= 1;
+  }
+  return out;
+});
 
 // What goes in column 2. For chat lines this is the nick (right-aligned);
 // for system events it's a tiny indicator glyph (-->, <--, --, !!).

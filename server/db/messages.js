@@ -69,3 +69,22 @@ export function countOlder(networkId, target, beforeId) {
     `SELECT COUNT(*) AS n FROM messages WHERE network_id = ? AND target = ? AND id < ?`
   ).get(networkId, target, beforeId).n;
 }
+
+const listSpeakersStmt = db.prepare(`
+  SELECT nick, MAX(time) AS last_time
+  FROM messages
+  WHERE network_id = ?
+    AND target = ?
+    AND type IN ('message', 'action')
+    AND nick IS NOT NULL
+    AND nick <> ''
+  GROUP BY LOWER(nick)
+  ORDER BY last_time DESC
+  LIMIT ?
+`);
+
+export function listSpeakers(networkId, target, limit = 128) {
+  return listSpeakersStmt.all(networkId, target, limit)
+    .map((r) => ({ nick: r.nick, lastTime: Date.parse(r.last_time) || 0 }))
+    .filter((s) => s.lastTime > 0);
+}

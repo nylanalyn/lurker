@@ -1,5 +1,5 @@
 <template>
-  <form class="input" @submit.prevent="submit">
+  <form ref="formEl" class="input" @submit.prevent="submit">
     <span class="clock">[{{ clock }}]</span>
     <span class="prompt">{{ promptLabel }}&nbsp;&gt;</span>
     <input
@@ -9,25 +9,52 @@
       :disabled="!active"
       autocomplete="off"
       spellcheck="false"
+      @keydown="onKeydown"
+      @blur="resetCompletion"
     />
     <TypingIndicator class="typing" />
+    <NickPicker
+      :open="pickerOpen"
+      :query="pickerQuery"
+      :buffer="buffer"
+      :self-nick="ownNick"
+      :anchor="formEl"
+      @select="onPickerSelect"
+      @close="closePicker"
+    />
   </form>
 </template>
 
 <script setup>
 import { ref, computed, watch, onBeforeUnmount, onMounted } from 'vue';
 import { useNetworksStore } from '../stores/networks.js';
+import { useBuffersStore } from '../stores/buffers.js';
 import { useSettingsStore } from '../stores/settings.js';
 import { socketSend } from '../composables/useSocket.js';
 import { formatTimestamp } from '../utils/timestamp.js';
 import TypingIndicator from './TypingIndicator.vue';
+import NickPicker from './NickPicker.vue';
 
 const networks = useNetworksStore();
+const buffers = useBuffersStore();
 const settings = useSettingsStore();
 const text = ref('');
 const inputEl = ref(null);
+const formEl = ref(null);
+const pickerOpen = ref(false);
+const pickerQuery = ref('');
+let pickerTokenStart = -1;
+let pickerTokenEnd = -1;
 
 const active = computed(() => networks.activeBuffer);
+const buffer = computed(() => (active.value
+  ? buffers.byKey(`${active.value.networkId}::${active.value.target}`)
+  : null));
+const ownNick = computed(() => {
+  const a = active.value;
+  if (!a) return '';
+  return networks.states[a.networkId]?.nick || '';
+});
 const isServer = computed(() => active.value?.target?.startsWith(':server:'));
 const sendable = computed(() => !!active.value && !isServer.value);
 const placeholder = computed(() => {
@@ -77,8 +104,171 @@ function endTypingTo(target) {
   clearInactivityTimer();
 }
 
+// Tab completion session — null when no Tab cycle is active. Reset on any
+// non-Tab keydown, blur, submit, or buffer change.
+let completion = null;
+let cycling = false;  // true while we're programmatically rewriting `text`
+
+function tokenAtCursor(value, cursor) {
+  let start = cursor;
+  while (start > 0 && !/\s/.test(value[start - 1])) start--;
+  let end = cursor;
+  while (end < value.length && !/\s/.test(value[end])) end++;
+  return { token: value.slice(start, end), start, end };
+}
+
+function buildNickMatches(buf, networkId, prefix) {
+  const lower = prefix.toLowerCase();
+  const seen = new Set();
+  const out = [];
+  // Speakers first (reverse-chronological).
+  const speakers = Object.values(buf.speakers || {})
+    .sort((a, b) => b.lastTime - a.lastTime);
+  for (const s of speakers) {
+    if (!s.nick.toLowerCase().startsWith(lower)) continue;
+    if (seen.has(s.nick.toLowerCase())) continue;
+    seen.add(s.nick.toLowerCase());
+    out.push(s.nick);
+  }
+  // Channel members not already represented (alphabetical).
+  const memberNames = (buf.members || [])
+    .map((m) => (typeof m === 'string' ? m : m.nick))
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+  for (const n of memberNames) {
+    const lc = n.toLowerCase();
+    if (seen.has(lc)) continue;
+    if (!lc.startsWith(lower)) continue;
+    seen.add(lc);
+    out.push(n);
+  }
+  // Own nick last (only if it matches the prefix).
+  const own = networks.states[networkId]?.nick;
+  if (own && own.toLowerCase().startsWith(lower) && !seen.has(own.toLowerCase())) {
+    out.push(own);
+  }
+  return out;
+}
+
+function buildChannelMatches(networkId, prefix) {
+  const lower = prefix.toLowerCase();
+  return buffers.forNetwork(networkId)
+    .map((b) => b.target)
+    .filter((t) => t.startsWith('#') && t.toLowerCase().startsWith(lower))
+    .sort((a, b) => a.localeCompare(b));
+}
+
+function applyCompletion() {
+  if (!completion || !completion.matches.length) return;
+  const pick = completion.matches[completion.index];
+  const suffix = (completion.atLineStart && !completion.isChannel) ? ': ' : '';
+  cycling = true;
+  text.value = completion.prefix + pick + suffix + completion.tail;
+  cycling = false;
+  // Move caret to just after the inserted nick + suffix.
+  const caret = completion.prefix.length + pick.length + suffix.length;
+  // Set on the next tick so v-model has propagated.
+  Promise.resolve().then(() => {
+    const el = inputEl.value;
+    if (!el) return;
+    el.setSelectionRange(caret, caret);
+    completion.caret = caret;
+  });
+}
+
+function resetCompletion() {
+  completion = null;
+}
+
+function onKeydown(e) {
+  if (e.key !== 'Tab') {
+    if (completion) resetCompletion();
+    return;
+  }
+  if (!sendable.value) return;
+  e.preventDefault();
+  const el = inputEl.value;
+  if (!el) return;
+
+  if (completion) {
+    const dir = e.shiftKey ? -1 : 1;
+    const n = completion.matches.length;
+    if (n === 0) return;
+    completion.index = (completion.index + dir + n) % n;
+    applyCompletion();
+    return;
+  }
+
+  const value = text.value;
+  const cursor = el.selectionStart ?? value.length;
+  const { token, start, end } = tokenAtCursor(value, cursor);
+  if (!token) return;
+
+  const buf = buffer.value;
+  if (!buf) return;
+  const networkId = active.value.networkId;
+
+  const isChannel = token.startsWith('#');
+  const stripped = isChannel ? token.slice(1) : token;
+  const matches = isChannel
+    ? buildChannelMatches(networkId, token)
+    : buildNickMatches(buf, networkId, stripped);
+  if (!matches.length) return;
+
+  const prefix = value.slice(0, start);
+  const tail = value.slice(end);
+  const atLineStart = /^\s*$/.test(prefix);
+
+  completion = { prefix, tail, token, isChannel, atLineStart, matches, index: 0, caret: 0 };
+  applyCompletion();
+}
+
+function closePicker() {
+  pickerOpen.value = false;
+  pickerQuery.value = '';
+  pickerTokenStart = -1;
+  pickerTokenEnd = -1;
+}
+
+function refreshPicker() {
+  const el = inputEl.value;
+  if (!el) { closePicker(); return; }
+  const value = text.value;
+  const cursor = el.selectionStart ?? value.length;
+  const { token, start, end } = tokenAtCursor(value, cursor);
+  if (!token.startsWith('@')) {
+    if (pickerOpen.value) closePicker();
+    return;
+  }
+  pickerOpen.value = true;
+  pickerQuery.value = token.slice(1);
+  pickerTokenStart = start;
+  pickerTokenEnd = end;
+}
+
+function onPickerSelect(nick) {
+  const value = text.value;
+  if (pickerTokenStart < 0) { closePicker(); return; }
+  const before = value.slice(0, pickerTokenStart);
+  const after = value.slice(pickerTokenEnd);
+  cycling = true;
+  text.value = before + nick + ' ' + after;
+  cycling = false;
+  closePicker();
+  Promise.resolve().then(() => {
+    const el = inputEl.value;
+    if (!el) return;
+    const caret = before.length + nick.length + 1;
+    el.focus();
+    el.setSelectionRange(caret, caret);
+  });
+}
+
 function onInput() {
   if (!sendable.value) return;
+  if (cycling) return;
+  if (completion) resetCompletion();
+  refreshPicker();
   const { networkId, target } = active.value;
   const trimmed = text.value.trim();
 
@@ -115,6 +305,8 @@ function onInput() {
 watch(text, onInput);
 
 watch(active, (newActive, oldActive) => {
+  resetCompletion();
+  closePicker();
   if (oldActive && (!newActive || oldActive.target !== newActive.target || oldActive.networkId !== newActive.networkId)) {
     endTypingTo(oldActive);
   }
@@ -125,6 +317,8 @@ onBeforeUnmount(() => {
 });
 
 function submit() {
+  resetCompletion();
+  closePicker();
   const raw = text.value;
   if (!raw.trim() || !active.value) return;
   const { networkId, target } = active.value;

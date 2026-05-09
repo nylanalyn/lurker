@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 
 const MAX_PER_BUFFER = 500;
+const MAX_SPEAKERS = 128;
 const TYPING_DURATIONS = { active: 6000, paused: 30000 };
 
 const typingTimers = new Map();
@@ -36,8 +37,10 @@ function ensureBuffer(state, networkId, target) {
       oldestId: null,
       hasMore: true,
       loadingHistory: false,
+      speakers: {},
     };
   }
+  if (!state.buffers[k].speakers) state.buffers[k].speakers = {};
   if (!state.buffers[k].typing) state.buffers[k].typing = {};
   return state.buffers[k];
 }
@@ -66,20 +69,22 @@ export const useBuffersStore = defineStore('buffers', {
         delete buf.typing[event.nick];
       }
     },
-    replaceBacklog(networkId, target, events) {
+    replaceBacklog(networkId, target, events, speakers) {
       const buf = ensureBuffer(this, networkId, target);
       buf.messages = events.slice(-MAX_PER_BUFFER);
       const first = buf.messages[0];
       buf.oldestId = first?.id ?? null;
       buf.hasMore = events.length >= 50;
+      if (speakers !== undefined) this.seedSpeakers(networkId, target, speakers);
     },
-    prependHistory(networkId, target, events, hasMore) {
+    prependHistory(networkId, target, events, hasMore, speakers) {
       const buf = ensureBuffer(this, networkId, target);
       buf.messages = [...events, ...buf.messages];
       const first = buf.messages[0];
       buf.oldestId = first?.id ?? buf.oldestId;
       buf.hasMore = !!hasMore;
       buf.loadingHistory = false;
+      if (speakers !== undefined) this.seedSpeakers(networkId, target, speakers);
     },
     setLoadingHistory(networkId, target, loading) {
       const buf = ensureBuffer(this, networkId, target);
@@ -109,6 +114,45 @@ export const useBuffersStore = defineStore('buffers', {
           if (typeof m === 'object') m.nick = newNick;
         }
       }
+      const oldLc = oldNick?.toLowerCase();
+      const newLc = newNick?.toLowerCase();
+      if (oldLc && newLc && buf.speakers[oldLc]) {
+        const lastTime = buf.speakers[oldLc].lastTime;
+        delete buf.speakers[oldLc];
+        const existing = buf.speakers[newLc];
+        if (!existing || existing.lastTime < lastTime) {
+          buf.speakers[newLc] = { nick: newNick, lastTime };
+        }
+      }
+    },
+    recordSpeaker(networkId, target, nick, time) {
+      if (!nick || !time) return;
+      const buf = ensureBuffer(this, networkId, target);
+      const lc = nick.toLowerCase();
+      const existing = buf.speakers[lc];
+      if (existing && existing.lastTime >= time) return;
+      buf.speakers[lc] = { nick, lastTime: time };
+      const keys = Object.keys(buf.speakers);
+      if (keys.length > MAX_SPEAKERS) {
+        let oldestKey = keys[0];
+        for (const k of keys) {
+          if (buf.speakers[k].lastTime < buf.speakers[oldestKey].lastTime) oldestKey = k;
+        }
+        delete buf.speakers[oldestKey];
+      }
+    },
+    seedSpeakers(networkId, target, list) {
+      if (!Array.isArray(list)) return;
+      const buf = ensureBuffer(this, networkId, target);
+      const next = {};
+      for (const s of list) {
+        if (!s?.nick || !s?.lastTime) continue;
+        next[s.nick.toLowerCase()] = { nick: s.nick, lastTime: s.lastTime };
+      }
+      for (const [lc, existing] of Object.entries(buf.speakers || {})) {
+        if (!next[lc] || next[lc].lastTime < existing.lastTime) next[lc] = existing;
+      }
+      buf.speakers = next;
     },
     drop(networkId, target) {
       delete this.buffers[key(networkId, target)];

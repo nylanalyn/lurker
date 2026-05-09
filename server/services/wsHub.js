@@ -5,7 +5,7 @@ import ircManager from './ircManager.js';
 import settingsService from './settingsService.js';
 import { findSession } from '../db/sessions.js';
 import { findUserById } from '../db/users.js';
-import { listMessages, listBufferTargets } from '../db/messages.js';
+import { listMessages, listBufferTargets, listSpeakers } from '../db/messages.js';
 import { SESSION_COOKIE } from '../middleware/auth.js';
 
 export function attachWsHub(httpServer, sessionSecret) {
@@ -102,11 +102,13 @@ export function attachWsHub(httpServer, sessionSecret) {
       for (const ch of conn.channels.values()) targets.add(ch.name);
       for (const target of targets) {
         const events = listMessages(conn.network.id, target, { limit: 50 });
+        const speakers = listSpeakers(conn.network.id, target);
         send(ws, {
           kind: 'backlog',
           networkId: conn.network.id,
           target,
           events,
+          speakers,
         });
       }
     }
@@ -147,6 +149,7 @@ export function attachWsHub(httpServer, sessionSecret) {
           before: msg.before ? Number(msg.before) : undefined,
           limit,
         });
+        const speakers = listSpeakers(msg.networkId, msg.target);
         send(ws, {
           kind: 'history',
           networkId: msg.networkId,
@@ -154,6 +157,7 @@ export function attachWsHub(httpServer, sessionSecret) {
           before: msg.before || null,
           events,
           hasMore: events.length === limit,
+          speakers,
         });
         break;
       }

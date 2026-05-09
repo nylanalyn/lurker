@@ -201,6 +201,55 @@ export const REGISTRY = Object.freeze([
       'Time format for the clock displayed in the status bar (above the input). ' +
       'Tokens: YYYY MM DD HH mm ss. Empty string hides the clock.',
   },
+
+  // ─── Smart filter (join/part/quit/nick noise) ─────────────────────────
+  {
+    key: 'chat.smart_filter',
+    type: 'bool',
+    default: true,
+    description:
+      'Master switch for smart filtering of join/part/quit/nick noise. When enabled, ' +
+      'these events are hidden for nicks that have not recently spoken in the channel.',
+  },
+  {
+    key: 'chat.smart_filter_delay',
+    type: 'int',
+    min: 0,
+    max: 1440,
+    default: 5,
+    description:
+      'Window in minutes for "recently spoke". A join/part/quit/nick event is hidden ' +
+      'if the affected nick has not posted a message within this many minutes before ' +
+      'the event.',
+  },
+  {
+    key: 'chat.smart_filter_join',
+    type: 'bool',
+    default: true,
+    description: 'Apply smart filter to JOIN events.',
+  },
+  {
+    key: 'chat.smart_filter_quit',
+    type: 'bool',
+    default: true,
+    description: 'Apply smart filter to PART and QUIT events.',
+  },
+  {
+    key: 'chat.smart_filter_nick',
+    type: 'bool',
+    default: true,
+    description: 'Apply smart filter to NICK change events.',
+  },
+  {
+    key: 'chat.smart_filter_join_unmask',
+    type: 'int',
+    min: 0,
+    max: 1440,
+    default: 30,
+    description:
+      'If a smart-filtered nick speaks within this many minutes after their JOIN, ' +
+      'the JOIN line is revealed. 0 disables unmasking.',
+  },
 ]);
 
 const BY_KEY = new Map(REGISTRY.map((opt) => [opt.key, opt]));

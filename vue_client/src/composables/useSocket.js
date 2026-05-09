@@ -31,6 +31,15 @@ function applyEvent(event) {
       break;
     case 'message':
     case 'action':
+      buffers.pushMessage(event);
+      if (event.nick) {
+        buffers.recordSpeaker(event.networkId, event.target, event.nick,
+          Date.parse(event.time) || Date.now());
+      }
+      if (!event.self && networks.activeKey !== `${event.networkId}::${event.target}`) {
+        buffers.markUnread(event.networkId, event.target);
+      }
+      break;
     case 'notice':
       buffers.pushMessage(event);
       if (!event.self && networks.activeKey !== `${event.networkId}::${event.target}`) {
@@ -102,7 +111,7 @@ function applySnapshot(snapshot) {
 
 function applyBacklog(payload) {
   const buffers = useBuffersStore();
-  buffers.replaceBacklog(payload.networkId, payload.target, payload.events);
+  buffers.replaceBacklog(payload.networkId, payload.target, payload.events, payload.speakers);
 }
 
 function handleMessage(raw) {
@@ -119,7 +128,7 @@ function handleMessage(raw) {
   }
   if (payload.kind === 'history') {
     const buffers = useBuffersStore();
-    buffers.prependHistory(payload.networkId, payload.target, payload.events, payload.hasMore);
+    buffers.prependHistory(payload.networkId, payload.target, payload.events, payload.hasMore, payload.speakers);
     return;
   }
   if (payload.kind === 'irc') {
