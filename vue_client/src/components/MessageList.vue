@@ -451,7 +451,7 @@ watch(() => props.pendingScrollId, async (id) => {
   align-content: start;
   column-gap: 0;
   row-gap: 0;
-  line-height: 1.45;
+  line-height: 1.55;
 }
 
 .line {
