@@ -31,6 +31,7 @@
 
     <MessageList :pending-scroll-id="pendingScrollId" />
     <MemberList v-if="active" />
+    <StatusBar />
     <MessageInput ref="messageInputRef" />
 
     <NetworkForm
@@ -59,6 +60,7 @@ import BufferList from '../components/BufferList.vue';
 import MessageList from '../components/MessageList.vue';
 import MessageInput from '../components/MessageInput.vue';
 import MemberList from '../components/MemberList.vue';
+import StatusBar from '../components/StatusBar.vue';
 import NetworkForm from '../components/NetworkForm.vue';
 import HighlightsModal from '../components/HighlightsModal.vue';
 import LinkedText from '../components/LinkedText.vue';
@@ -158,11 +160,12 @@ onMounted(async () => {
      paint over it as content scrolls past — the line appears to be eaten
      by the scrolling rows. A dedicated row sits between the two children
      and nothing can paint on top of it. */
-  grid-template-rows: auto auto 1fr auto;
+  grid-template-rows: auto auto 1fr auto auto;
   grid-template-areas:
     "sidebar topic    topic"
     "sidebar divider  divider"
     "sidebar messages members"
+    "sidebar status   status"
     "sidebar input    input";
   height: 100vh;
   overflow: hidden;
@@ -240,5 +243,6 @@ onMounted(async () => {
    match the rendered roots of MessageList / MemberList / MessageInput. */
 .message-list { grid-area: messages; }
 .members      { grid-area: members; border-left: 1px solid var(--border); }
+.status-bar   { grid-area: status; }
 .input        { grid-area: input; }
 </style>

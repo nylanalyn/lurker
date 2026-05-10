@@ -54,6 +54,12 @@ import { useBuffersStore } from '../stores/buffers.js';
 import { useSettingsStore } from '../stores/settings.js';
 import { socketSend } from '../composables/useSocket.js';
 import { useNickColors } from '../composables/useNickColors.js';
+import {
+  setStuckToBottom,
+  bumpNewBelow,
+  resetScrollState,
+  useScrollState,
+} from '../composables/useScrollState.js';
 import { segmentInlineStyle, segmentHasStyle } from '../utils/nickColor.js';
 import { formatTimestamp } from '../utils/timestamp.js';
 import NickRef from './NickRef.vue';
@@ -74,6 +80,7 @@ const tsFormat = computed(() => settings.effective('look.buffer.time_format'));
 
 const scroller = ref(null);
 const stickToBottom = ref(true);
+const { scrollToBottomToken } = useScrollState();
 
 const buffer = computed(() => (networks.activeKey ? buffers.byKey(networks.activeKey) : null));
 const messages = computed(() => buffer.value?.messages || []);
@@ -297,6 +304,7 @@ function onScroll() {
   const el = scroller.value;
   if (!el) return;
   stickToBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
+  setStuckToBottom(stickToBottom.value);
   if (pendingHistoryTimer) clearTimeout(pendingHistoryTimer);
   pendingHistoryTimer = setTimeout(() => {
     pendingHistoryTimer = null;
@@ -309,7 +317,10 @@ function onScroll() {
 // scroll event firing, the watcher resumes on nextTick before onScroll has
 // run, and reads a stale stickToBottom=true — snapping the user back.
 function onWheel(e) {
-  if (e.deltaY < 0) stickToBottom.value = false;
+  if (e.deltaY < 0) {
+    stickToBottom.value = false;
+    setStuckToBottom(false);
+  }
 }
 
 function scrollToBottom() {
@@ -362,20 +373,39 @@ watch(
     await nextTick();
     if (replaced) {
       stickToBottom.value = true;
+      resetScrollState();
       scrollToBottom();
       ensureViewportFilled();
       return;
     }
-    if (stickToBottom.value && grew) scrollToBottom();
+    // Live append (new message arrived). When the user is pinned, scroll
+    // along; otherwise track the unread-below count so the status bar can
+    // surface "[N new ↓]". `lastChanged` filters to the case where the last
+    // message id actually moved — pure prepends and id renumbers won't bump.
+    if (lastChanged && grew) {
+      if (stickToBottom.value) scrollToBottom();
+      else bumpNewBelow();
+    }
     ensureViewportFilled();
   },
 );
 
 watch(() => networks.activeKey, async () => {
   stickToBottom.value = true;
+  resetScrollState();
   await nextTick();
   scrollToBottom();
   ensureViewportFilled();
+});
+
+// StatusBar's "[N new ↓]" click increments scrollToBottomToken. Watching the
+// token (rather than wiring a callback) keeps the composable stateless and
+// avoids leaking refs to MessageList's DOM out of the component.
+watch(scrollToBottomToken, async () => {
+  await nextTick();
+  stickToBottom.value = true;
+  setStuckToBottom(true);
+  scrollToBottom();
 });
 
 watch(() => props.pendingScrollId, async (id) => {

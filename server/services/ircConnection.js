@@ -5,6 +5,7 @@ import highlightRulesService from './highlightRulesService.js';
 
 const NON_PERSISTED_TYPES = new Set([
   'state', 'names', 'channel-joined', 'channel-parted', 'typing', 'away-state',
+  'channel-modes', 'lag',
 ]);
 
 function extractExtras(event) {
@@ -38,6 +39,10 @@ export class IrcConnection {
     this.userModes = new Set();
     this.awayState = { active: false, message: null, since: null, autoSet: false };
     this.disposed = false;
+    this.lagMs = null;
+    this.lagPingTimer = null;
+    this.lagPendingToken = null;
+    this.lagPendingSentAt = 0;
     this.bind();
   }
 
@@ -111,6 +116,8 @@ export class IrcConnection {
 
     c.on('registered', () => {
       this.userModes.clear();
+      this.lagMs = null;
+      this.startLagPinger();
       this.setState('connected', { nick: c.user.nick });
       try {
         highlightRulesService.upsertAutoNickRule(this.network.user_id, this.network.id, c.user.nick);
@@ -126,7 +133,18 @@ export class IrcConnection {
     });
     c.on('close', () => {
       this.userModes.clear();
+      this.stopLagPinger();
+      this.lagMs = null;
       this.setState('disconnected');
+    });
+
+    c.on('pong', (event) => {
+      const token = event?.message;
+      if (!token || token !== this.lagPendingToken) return;
+      this.lagMs = Math.max(0, Date.now() - this.lagPendingSentAt);
+      this.lagPendingToken = null;
+      this.lagPendingSentAt = 0;
+      this.publishLag();
     });
     // irc-framework's net transport stashes socket-level errors (DNS lookup
     // failures, ECONNREFUSED, TLS handshake errors, etc.) in last_socket_error
@@ -211,6 +229,9 @@ export class IrcConnection {
       this.publish({ type: 'join', target: event.channel, nick: event.nick });
       if (event.nick === c.user.nick) {
         this.publish({ type: 'channel-joined', target: event.channel });
+        // Most servers volunteer 324 on join, but a few don't. Request it so
+        // the channel's mode flags reach the status bar consistently.
+        try { c.raw('MODE', event.channel); } catch (_) { /* ignore */ }
       }
     });
 
@@ -294,19 +315,30 @@ export class IrcConnection {
       // Apply per-user prefix modes (+o/-o, +v/-v, etc.) to the member map so
       // the snapshot keeps current modes after page reload.
       let memberModesChanged = false;
+      let chanModesChanged = false;
       if (ch) {
         for (const m of (event.modes || [])) {
-          if (!m || !m.param) continue;
+          if (!m || !m.mode) continue;
           const sign = m.mode[0];
           const letter = m.mode.slice(1);
-          if (!isPrefixMode(letter)) continue;
-          const member = ch.members.get(m.param.toLowerCase());
-          if (!member) continue;
-          const set = new Set(member.modes);
-          if (sign === '+') set.add(letter);
-          else set.delete(letter);
-          member.modes = [...set];
-          memberModesChanged = true;
+          // Per-user prefix mode: lands on the member, not on the channel.
+          if (m.param && isPrefixMode(letter)) {
+            const member = ch.members.get(m.param.toLowerCase());
+            if (!member) continue;
+            const set = new Set(member.modes);
+            if (sign === '+') set.add(letter);
+            else set.delete(letter);
+            member.modes = [...set];
+            memberModesChanged = true;
+            continue;
+          }
+          // Channel-level flag mode (no param, or list-type mode like +b that
+          // we don't surface in the status bar). We only track flag modes
+          // (no param) so +b/+e/+I bans don't pollute the (+...) display.
+          if (!m.param) {
+            if (sign === '+' && !ch.modes.has(letter)) { ch.modes.add(letter); chanModesChanged = true; }
+            else if (sign === '-' && ch.modes.delete(letter)) { chanModesChanged = true; }
+          }
         }
       }
       const text = [event.raw_modes, ...(event.raw_params || [])].filter(Boolean).join(' ');
@@ -323,6 +355,29 @@ export class IrcConnection {
           target: ch.name,
           members: Array.from(ch.members.values()).map((m) => ({ nick: m.nick, modes: m.modes, away: !!m.away })),
         });
+      }
+      if (chanModesChanged && ch) this.publishChannelModes(ch);
+    });
+
+    // RPL_CHANNELMODEIS (324) and friends. Sent on join by most servers and
+    // on demand via `MODE #chan`. Captures the current flag set without
+    // requiring us to have observed the +/− history.
+    c.on('channel info', (event) => {
+      if (!event?.channel || !event.modes) return;
+      const ch = this.channels.get(event.channel.toLowerCase());
+      if (!ch) return;
+      const next = new Set();
+      for (const m of event.modes) {
+        if (!m || !m.mode || m.param) continue;
+        const letter = m.mode.replace(/^[+-]/, '');
+        if (!letter) continue;
+        next.add(letter);
+      }
+      const before = [...ch.modes].sort().join('');
+      const after = [...next].sort().join('');
+      if (before !== after) {
+        ch.modes = next;
+        this.publishChannelModes(ch);
       }
     });
 
@@ -450,10 +505,59 @@ export class IrcConnection {
     const key = name.toLowerCase();
     let ch = this.channels.get(key);
     if (!ch) {
-      ch = { name, topic: null, members: new Map() };
+      ch = { name, topic: null, members: new Map(), modes: new Set() };
       this.channels.set(key, ch);
     }
+    if (!ch.modes) ch.modes = new Set();
     return ch;
+  }
+
+  publishChannelModes(ch) {
+    this.publish({
+      type: 'channel-modes',
+      target: ch.name,
+      modes: [...ch.modes].join(''),
+    });
+  }
+
+  publishLag() {
+    this.publish({
+      type: 'lag',
+      target: this.serverTarget(),
+      lagMs: this.lagMs,
+    });
+  }
+
+  // Periodic PING with a `caint-lag-<sent>` token. PONG echoes the token back
+  // so the matching pong handler can compute roundtrip even when the server
+  // is also ponging unrelated PINGs we didn't send. Cleared on disconnect.
+  startLagPinger() {
+    this.stopLagPinger();
+    const sendOne = () => {
+      if (this.disposed || this.state !== 'connected') return;
+      // If a previous ping hasn't been answered after 30s, declare lag stale
+      // so the client stops showing an old number.
+      if (this.lagPendingToken && Date.now() - this.lagPendingSentAt > 30_000) {
+        this.lagMs = null;
+        this.publishLag();
+        this.lagPendingToken = null;
+      }
+      const token = `caint-lag-${Date.now()}`;
+      this.lagPendingToken = token;
+      this.lagPendingSentAt = Date.now();
+      try { this.client.ping(token); } catch (_) { /* ignore */ }
+    };
+    sendOne();
+    this.lagPingTimer = setInterval(sendOne, 30_000);
+  }
+
+  stopLagPinger() {
+    if (this.lagPingTimer) {
+      clearInterval(this.lagPingTimer);
+      this.lagPingTimer = null;
+    }
+    this.lagPendingToken = null;
+    this.lagPendingSentAt = 0;
   }
 
   connect() {
@@ -590,6 +694,7 @@ export class IrcConnection {
 
   dispose(reason = 'network removed') {
     this.disposed = true;
+    this.stopLagPinger();
     try { this.client.quit(reason); } catch (_) { /* ignore */ }
   }
 
@@ -600,10 +705,12 @@ export class IrcConnection {
       state: this.state,
       nick: this.client.user?.nick || this.network.nick,
       userModes: [...this.userModes].join(''),
+      lagMs: this.lagMs,
       away: a.active ? { message: a.message, since: a.since, autoSet: a.autoSet } : null,
       channels: Array.from(this.channels.values()).map((ch) => ({
         name: ch.name,
         topic: ch.topic,
+        modes: [...(ch.modes || [])].join(''),
         members: Array.from(ch.members.values()).map((m) => ({ nick: m.nick, modes: m.modes, away: !!m.away })),
       })),
     };

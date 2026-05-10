@@ -204,7 +204,7 @@ export const REGISTRY = Object.freeze([
   {
     key: 'look.bar.time_format',
     type: 'string',
-    default: 'HH:mm',
+    default: 'HH:mm:ss',
     description:
       'Time format for the clock displayed in the status bar (above the input). ' +
       'Tokens: YYYY MM DD HH mm ss. Empty string hides the clock.',

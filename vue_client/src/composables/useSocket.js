@@ -85,6 +85,12 @@ function applyEvent(event) {
     case 'mode':
       buffers.pushMessage(event);
       break;
+    case 'channel-modes':
+      buffers.setChannelModes(event.networkId, event.target, event.modes);
+      break;
+    case 'lag':
+      networks.applyLag(event);
+      break;
     case 'usermode':
       networks.applyUserMode(event);
       break;
@@ -136,6 +142,7 @@ function applySnapshot(snapshot) {
       );
       buffers.setMembers(net.networkId, ch.name, normalized);
       buffers.setTopic(net.networkId, ch.name, ch.topic);
+      buffers.setChannelModes(net.networkId, ch.name, ch.modes || '');
     }
   }
 }

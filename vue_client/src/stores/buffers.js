@@ -130,6 +130,10 @@ export const useBuffersStore = defineStore('buffers', {
       const buf = ensureBuffer(this, networkId, target);
       buf.topic = topic;
     },
+    setChannelModes(networkId, target, modes) {
+      const buf = ensureBuffer(this, networkId, target);
+      buf.modes = modes || '';
+    },
     removeMember(networkId, target, nick) {
       const buf = ensureBuffer(this, networkId, target);
       buf.members = buf.members.filter((m) => (m.nick || m) !== nick);

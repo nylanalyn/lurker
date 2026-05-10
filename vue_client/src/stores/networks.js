@@ -77,5 +77,13 @@ export const useNetworksStore = defineStore('networks', {
         away: event.away || null,
       };
     },
+    applyLag(event) {
+      const existing = this.states[event.networkId] || { networkId: event.networkId, channels: [] };
+      const v = event.lagMs;
+      this.states[event.networkId] = {
+        ...existing,
+        lagMs: typeof v === 'number' ? v : null,
+      };
+    },
   },
 });

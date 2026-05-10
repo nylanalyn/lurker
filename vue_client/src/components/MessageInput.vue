@@ -1,6 +1,5 @@
 <template>
   <form ref="formEl" class="input" @submit.prevent="submit">
-    <span class="clock">[{{ clock }}]</span>
     <span class="prompt">{{ promptLabel }}<span v-if="awayLabel" class="away">&nbsp;{{ awayLabel }}</span>&nbsp;&gt;</span>
     <input
       ref="inputEl"
@@ -12,7 +11,6 @@
       @keydown="onKeydown"
       @blur="resetCompletion"
     />
-    <TypingIndicator class="typing" />
     <NickPicker
       :open="pickerOpen"
       :query="pickerQuery"
@@ -26,18 +24,14 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onBeforeUnmount, onMounted } from 'vue';
+import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import { useNetworksStore } from '../stores/networks.js';
 import { useBuffersStore } from '../stores/buffers.js';
-import { useSettingsStore } from '../stores/settings.js';
 import { socketSend } from '../composables/useSocket.js';
-import { formatTimestamp } from '../utils/timestamp.js';
-import TypingIndicator from './TypingIndicator.vue';
 import NickPicker from './NickPicker.vue';
 
 const networks = useNetworksStore();
 const buffers = useBuffersStore();
-const settings = useSettingsStore();
 const text = ref('');
 const inputEl = ref(null);
 const formEl = ref(null);
@@ -62,13 +56,35 @@ const placeholder = computed(() => {
   if (isServer.value) return '/raw <line>';
   return 'try /help';
 });
+// IRC channel prefix priority: q > a > o > h > v. The prompt prepends the
+// highest-precedence prefix character we hold in the active channel, so the
+// input area communicates "you're an op here" without a separate segment.
+const PROMPT_PREFIX = { q: '~', a: '&', o: '@', h: '%', v: '+' };
+const PROMPT_PREFIX_RANK = ['q', 'a', 'o', 'h', 'v'];
+
+const channelPrefix = computed(() => {
+  const a = active.value;
+  if (!a || !a.target?.startsWith('#')) return '';
+  const buf = buffer.value;
+  const nick = networks.states[a.networkId]?.nick;
+  if (!buf || !nick) return '';
+  const lc = nick.toLowerCase();
+  const me = (buf.members || []).find((m) => ((m.nick || m).toLowerCase()) === lc);
+  const modes = me && typeof me === 'object' ? (me.modes || []) : [];
+  for (const letter of PROMPT_PREFIX_RANK) {
+    if (modes.includes(letter)) return PROMPT_PREFIX[letter];
+  }
+  return '';
+});
+
 const promptLabel = computed(() => {
-  if (!active.value) return '[—]';
+  if (!active.value) return '—';
   const state = networks.states[active.value.networkId];
   const nick = state?.nick;
-  if (!nick) return '[—]';
+  if (!nick) return '—';
   const modes = state?.userModes || '';
-  return modes ? `[${nick}(${modes})]` : `[${nick}]`;
+  const parens = modes ? `(${modes})` : '';
+  return `${channelPrefix.value}${nick}${parens}`;
 });
 
 const awayLabel = computed(() => {
@@ -76,13 +92,6 @@ const awayLabel = computed(() => {
   const msg = networks.states[active.value.networkId]?.away?.message;
   return msg ? `(${msg})` : '';
 });
-
-const tsFormat = computed(() => settings.effective('look.bar.time_format') || 'HH:mm');
-const now = ref(new Date());
-let clockTimer = null;
-onMounted(() => { clockTimer = setInterval(() => { now.value = new Date(); }, 1000); });
-onBeforeUnmount(() => { if (clockTimer) clearInterval(clockTimer); });
-const clock = computed(() => formatTimestamp(now.value.toISOString(), tsFormat.value));
 
 let typingState = null;
 let lastActiveSentAt = 0;
@@ -409,9 +418,7 @@ function handleCommand(line, networkId, target) {
   align-items: center;
   gap: 1ch;
   padding: 8px 12px;
-  border-top: 1px solid var(--border);
 }
-.clock { color: var(--fg-muted); }
 .prompt {
   color: var(--accent);
   white-space: pre;
@@ -428,5 +435,4 @@ input {
 }
 input:focus { outline: none; }
 input::placeholder { color: var(--fg-muted); font-style: italic; }
-.typing { flex: 0 0 auto; }
 </style>
