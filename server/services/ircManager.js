@@ -116,6 +116,11 @@ class IrcManager extends EventEmitter {
     const conn = this.getConnection(userId, networkId);
     if (!conn) return false;
     upsertChannel(networkId, name, false);
+    // /part keeps the buffer visible (it just dims). Clear any stale closed
+    // flag so the snapshot/backlog flow doesn't filter the buffer out — a
+    // prior /close (or pre-revert /part-as-close) would otherwise leave the
+    // buffer hidden until the user explicitly /joined again.
+    reopenBuffer(userId, networkId, name);
     conn.part(name, reason);
     return true;
   }

@@ -206,6 +206,20 @@ export function attachWsHub(httpServer, sessionSecret) {
     }
     fanOut(decorated.userId, { ...decorated, kind: 'irc' });
     maybePush(decorated.userId, decorated);
+
+    // After an IRC (re)connect, only auto-rejoined channels fire JOIN events,
+    // so any buffer the user had parted (or any buffer that simply pre-dates
+    // the live session) wouldn't otherwise reappear in the client's buffer
+    // list until a page refresh. Re-emit a fresh snapshot to every active
+    // socket so the buffer list always reflects the server's source of truth.
+    if (event.type === 'state' && event.state === 'connected') {
+      const set = socketsByUser.get(event.userId);
+      if (set) {
+        for (const ws of set) {
+          if (ws.readyState === ws.OPEN) sendSnapshot(ws, event.userId);
+        }
+      }
+    }
   });
 
   settingsService.on('event', ({ userId, changes, resetAll }) => {
