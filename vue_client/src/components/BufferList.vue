@@ -46,20 +46,12 @@
           >×</button>
         </li>
       </ul>
-      <div class="add">
-        <input
-          v-model="joinInput[net.id]"
-          placeholder="#channel"
-          @keydown.enter="join(net.id)"
-        />
-      </div>
     </div>
     <p v-if="!networks.networks.length" class="empty">No networks yet — add one with the + button.</p>
   </nav>
 </template>
 
 <script setup>
-import { reactive } from 'vue';
 import { useNetworksStore } from '../stores/networks.js';
 import { useBuffersStore } from '../stores/buffers.js';
 import { socketSend } from '../composables/useSocket.js';
@@ -70,8 +62,6 @@ defineEmits(['edit-network']);
 const networks = useNetworksStore();
 const buffers = useBuffersStore();
 const nicks = useNickColors();
-
-const joinInput = reactive({});
 
 function isServerBuffer(buf) {
   return buf.target.startsWith(':server:');
@@ -139,14 +129,6 @@ function stateClass(networkId) {
   if (s === 'connected') return 'good';
   if (s === 'connecting' || s === 'reconnecting') return 'warn';
   return 'bad';
-}
-
-function join(networkId) {
-  const value = (joinInput[networkId] || '').trim();
-  if (!value) return;
-  const channel = value.startsWith('#') ? value : `#${value}`;
-  socketSend({ type: 'join', networkId, channel });
-  joinInput[networkId] = '';
 }
 
 function closeBuffer(networkId, target) {
@@ -267,9 +249,6 @@ function closeTitleFor(buf) {
   cursor: pointer;
 }
 .settings:hover { color: var(--fg); }
-
-.add { padding: 4px 10px; }
-.add input { width: 100%; }
 
 .empty { padding: 12px; color: var(--fg-muted); font-style: italic; }
 </style>
