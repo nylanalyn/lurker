@@ -137,7 +137,7 @@ export const useBuffersStore = defineStore('buffers', {
     addMember(networkId, target, nick) {
       const buf = ensureBuffer(this, networkId, target);
       const existing = buf.members.find((m) => (m.nick || m) === nick);
-      if (!existing) buf.members.push({ nick, modes: [] });
+      if (!existing) buf.members.push({ nick, modes: [], away: false });
     },
     renameMember(networkId, target, oldNick, newNick) {
       const buf = ensureBuffer(this, networkId, target);

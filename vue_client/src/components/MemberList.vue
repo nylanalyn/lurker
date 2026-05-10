@@ -1,7 +1,7 @@
 <template>
   <div class="members">
     <ul>
-      <li v-for="m in sorted" :key="nickOf(m)" :class="prefixClass(m)">
+      <li v-for="m in sorted" :key="nickOf(m)" :class="liClass(m)">
         <span class="prefix">{{ prefixOf(m) }}</span>
         <span class="nick" :style="nickStyle(m)">{{ nickOf(m) }}</span>
       </li>
@@ -32,6 +32,10 @@ function isSelf(m) {
   return !!sn && nickOf(m).toLowerCase() === sn.toLowerCase();
 }
 function nickStyle(m) {
+  // Away members render in a flat muted color — the .away CSS rule wins
+  // regardless of inline style, but skipping the inline color keeps the DOM
+  // honest.
+  if (isAway(m)) return null;
   if (isSelf(m)) return { color: nicks.selfColor.value };
   const c = nicks.color(nickOf(m));
   return c ? { color: c } : null;
@@ -53,6 +57,14 @@ function prefixOf(m) {
 function prefixClass(m) {
   const p = prefixOf(m);
   return p ? `mode-${p}` : '';
+}
+function isAway(m) { return typeof m === 'object' && !!m?.away; }
+function liClass(m) {
+  const classes = [];
+  const p = prefixClass(m);
+  if (p) classes.push(p);
+  if (isAway(m)) classes.push('away');
+  return classes;
 }
 
 const sorted = computed(() => [...members.value].sort((a, b) => {
@@ -87,4 +99,9 @@ li.mode-\@ .prefix { color: var(--member-op); }
 li.mode-\% .prefix { color: var(--member-halfop); }
 li.mode-\+ .prefix { color: var(--member-voice); }
 .nick { color: var(--accent); }
+/* Away nicks lose all per-user color and render in a flat muted gray. The
+   rule overrides the inline nickStyle (which is suppressed for away anyway)
+   and the prefix mode colors so the whole row reads as inert. */
+li.away .nick,
+li.away .prefix { color: var(--fg-muted) !important; }
 </style>

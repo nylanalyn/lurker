@@ -130,7 +130,9 @@ function applySnapshot(snapshot) {
       // Snapshot members are already { nick, modes } objects from the server.
       // Tolerate the legacy plain-string shape in case an old snapshot is in flight.
       const normalized = ch.members.map((m) =>
-        typeof m === 'string' ? { nick: m, modes: [] } : { nick: m.nick, modes: m.modes || [] }
+        typeof m === 'string'
+          ? { nick: m, modes: [], away: false }
+          : { nick: m.nick, modes: m.modes || [], away: !!m.away }
       );
       buffers.setMembers(net.networkId, ch.name, normalized);
       buffers.setTopic(net.networkId, ch.name, ch.topic);

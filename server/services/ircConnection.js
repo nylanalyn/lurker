@@ -207,7 +207,7 @@ export class IrcConnection {
 
     c.on('join', (event) => {
       const ch = this.upsertChannel(event.channel);
-      ch.members.set(event.nick.toLowerCase(), { nick: event.nick, modes: [] });
+      ch.members.set(event.nick.toLowerCase(), { nick: event.nick, modes: [], away: false });
       this.publish({ type: 'join', target: event.channel, nick: event.nick });
       if (event.nick === c.user.nick) {
         this.publish({ type: 'channel-joined', target: event.channel });
@@ -260,7 +260,7 @@ export class IrcConnection {
         const member = ch.members.get(oldLower);
         if (member) {
           ch.members.delete(oldLower);
-          ch.members.set(newLower, { nick: event.new_nick, modes: member.modes });
+          ch.members.set(newLower, { nick: event.new_nick, modes: member.modes, away: !!member.away });
           this.publish({ type: 'nick', target: ch.name, nick: event.nick, newNick: event.new_nick });
         }
       }
@@ -321,22 +321,64 @@ export class IrcConnection {
         this.publish({
           type: 'names',
           target: ch.name,
-          members: Array.from(ch.members.values()).map((m) => ({ nick: m.nick, modes: m.modes })),
+          members: Array.from(ch.members.values()).map((m) => ({ nick: m.nick, modes: m.modes, away: !!m.away })),
         });
       }
     });
 
     c.on('userlist', (event) => {
       const ch = this.upsertChannel(event.channel);
+      // Preserve known away flags across re-issued NAMES (e.g. on /NAMES or
+      // a fresh join). away-notify keeps it live; WHO refreshes it below.
+      const prev = new Map();
+      for (const [k, v] of ch.members) prev.set(k, !!v.away);
       ch.members.clear();
       for (const u of event.users) {
-        ch.members.set(u.nick.toLowerCase(), { nick: u.nick, modes: u.modes || [] });
+        const lc = u.nick.toLowerCase();
+        ch.members.set(lc, { nick: u.nick, modes: u.modes || [], away: prev.get(lc) || false });
       }
       this.publish({
         type: 'names',
         target: event.channel,
-        members: event.users.map((u) => ({ nick: u.nick, modes: u.modes || [] })),
+        members: Array.from(ch.members.values()).map((m) => ({ nick: m.nick, modes: m.modes, away: !!m.away })),
       });
+      // Issue a WHO so we learn the current away state for everyone in the
+      // channel. away-notify keeps it live after this initial sync.
+      try { c.who(event.channel); } catch (_) { /* ignore */ }
+    });
+
+    c.on('wholist', (event) => {
+      const ch = this.channels.get(event.target?.toLowerCase());
+      if (!ch) return;
+      let changed = false;
+      for (const u of (event.users || [])) {
+        if (!u || !u.nick) continue;
+        const m = ch.members.get(u.nick.toLowerCase());
+        if (!m) continue;
+        const next = !!u.away;
+        if (m.away !== next) {
+          m.away = next;
+          changed = true;
+        }
+      }
+      if (!changed) return;
+      this.publish({
+        type: 'names',
+        target: ch.name,
+        members: Array.from(ch.members.values()).map((m) => ({ nick: m.nick, modes: m.modes, away: !!m.away })),
+      });
+    });
+
+    // Per-user away/back. away-notify drives the non-self events; self events
+    // come from RPL_NOWAWAY/RPL_UNAWAY in response to our own /AWAY. We honor
+    // both so the self nick also dims in the nicklist.
+    c.on('away', (event) => {
+      if (!event || !event.nick) return;
+      this.applyMemberAway(event.nick, true);
+    });
+    c.on('back', (event) => {
+      if (!event || !event.nick) return;
+      this.applyMemberAway(event.nick, false);
     });
 
     c.on('irc error', (event) => {
@@ -383,6 +425,25 @@ export class IrcConnection {
 
   serverTarget() {
     return `:server:${this.network.id}`;
+  }
+
+  // Update the away flag for `nick` across every channel they're in and
+  // re-broadcast names for each affected channel so clients re-render the
+  // nicklist. Silent if the nick isn't tracked anywhere.
+  applyMemberAway(nick, away) {
+    const lower = nick.toLowerCase();
+    const next = !!away;
+    for (const ch of this.channels.values()) {
+      const m = ch.members.get(lower);
+      if (!m) continue;
+      if (m.away === next) continue;
+      m.away = next;
+      this.publish({
+        type: 'names',
+        target: ch.name,
+        members: Array.from(ch.members.values()).map((mm) => ({ nick: mm.nick, modes: mm.modes, away: !!mm.away })),
+      });
+    }
   }
 
   upsertChannel(name) {
@@ -543,7 +604,7 @@ export class IrcConnection {
       channels: Array.from(this.channels.values()).map((ch) => ({
         name: ch.name,
         topic: ch.topic,
-        members: Array.from(ch.members.values()).map((m) => ({ nick: m.nick, modes: m.modes })),
+        members: Array.from(ch.members.values()).map((m) => ({ nick: m.nick, modes: m.modes, away: !!m.away })),
       })),
     };
   }
