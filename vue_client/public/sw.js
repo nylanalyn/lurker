@@ -25,8 +25,8 @@ self.addEventListener('push', (event) => {
     body: data.text || '',
     tag: `${data.networkId || 0}::${data.target || ''}`,
     data,
-    icon: '/caint-icon.svg',
-    badge: '/caint-icon.svg',
+    icon: '/caint-icon-192.png',
+    badge: '/caint-icon-192.png',
   }));
 });
 
