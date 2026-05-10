@@ -87,6 +87,17 @@ function migrate() {
     );
     CREATE INDEX IF NOT EXISTS idx_buffer_reads_user ON buffer_reads(user_id);
 
+    CREATE TABLE IF NOT EXISTS closed_buffers (
+      user_id INTEGER NOT NULL,
+      network_id INTEGER NOT NULL,
+      target TEXT NOT NULL,
+      closed_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (user_id, network_id, target),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (network_id) REFERENCES networks(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_closed_buffers_user ON closed_buffers(user_id);
+
     CREATE TABLE IF NOT EXISTS user_settings (
       user_id INTEGER NOT NULL,
       key TEXT NOT NULL,

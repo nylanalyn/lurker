@@ -184,6 +184,21 @@ function handleMessage(raw) {
     });
     return;
   }
+  if (payload.kind === 'buffer-closed') {
+    const networks = useNetworksStore();
+    const buffers = useBuffersStore();
+    const closedKey = `${payload.networkId}::${payload.target}`;
+    if (networks.activeKey === closedKey) networks.activeKey = null;
+    buffers.drop(payload.networkId, payload.target);
+    return;
+  }
+  if (payload.kind === 'buffer-reopened') {
+    // Server cleared the closed flag because a new persisted message landed.
+    // The client doesn't need to do anything here — the matching `irc` event
+    // will recreate the buffer via pushMessage/ensureBuffer. We accept this
+    // signal silently so future tabs/devices don't keep filtering.
+    return;
+  }
 }
 
 function open() {

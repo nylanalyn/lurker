@@ -31,10 +31,10 @@
           >●</span>
           <span v-if="buf.unread > 0" class="badge">{{ buf.unread }}</span>
           <button
-            v-if="buf.target.startsWith('#')"
+            v-if="!isServerBuffer(buf)"
             class="part"
-            title="Leave channel"
-            @click.stop="part(net.id, buf.target)"
+            :title="closeTitleFor(buf)"
+            @click.stop="closeBuffer(net.id, buf.target)"
           >×</button>
         </li>
       </ul>
@@ -130,8 +130,12 @@ function join(networkId) {
   joinInput[networkId] = '';
 }
 
-function part(networkId, channel) {
-  socketSend({ type: 'part', networkId, channel });
+function closeBuffer(networkId, target) {
+  socketSend({ type: 'close-buffer', networkId, target });
+}
+
+function closeTitleFor(buf) {
+  return buf.target.startsWith('#') ? 'Leave and close channel' : 'Close conversation';
 }
 
 function toggleNet(_) {

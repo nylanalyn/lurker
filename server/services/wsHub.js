@@ -10,6 +10,13 @@ import { findSession } from '../db/sessions.js';
 import { findUserById } from '../db/users.js';
 import { listMessages, listBufferTargets, listSpeakers, countNewer, listNewer } from '../db/messages.js';
 import { listReadStateForUser, setReadState } from '../db/bufferReads.js';
+import {
+  closeBuffer,
+  reopenBuffer,
+  isClosed,
+  closedKeySetForUser,
+} from '../db/closedBuffers.js';
+import { upsertChannel } from '../db/networks.js';
 import { getUserSettings } from '../db/settings.js';
 import { defaultsAsObject } from './settingsRegistry.js';
 import { SESSION_COOKIE } from '../middleware/auth.js';
@@ -181,8 +188,24 @@ export function attachWsHub(httpServer, sessionSecret) {
 
   ircManager.on('event', (event) => {
     const decorated = decorateMessage(event.userId, event);
-    fanOut(event.userId, { ...decorated, kind: 'irc' });
-    maybePush(event.userId, decorated);
+    const target = decorated.target;
+    if (target && !target.startsWith(':server:')
+        && isClosed(decorated.userId, decorated.networkId, target)) {
+      // A persisted message with a real id (DM, message, action, notice, etc.)
+      // is a strong signal the buffer is wanted again — reopen it. Ephemeral
+      // events (typing, away markers fanned to this target, names) shouldn't
+      // resurrect a closed buffer, so we drop them on the floor.
+      const reopens = decorated.id != null && DM_ELIGIBLE_TYPES.has(decorated.type);
+      if (!reopens) return;
+      reopenBuffer(decorated.userId, decorated.networkId, target);
+      fanOut(decorated.userId, {
+        kind: 'buffer-reopened',
+        networkId: decorated.networkId,
+        target,
+      });
+    }
+    fanOut(decorated.userId, { ...decorated, kind: 'irc' });
+    maybePush(decorated.userId, decorated);
   });
 
   settingsService.on('event', ({ userId, changes, resetAll }) => {
@@ -252,11 +275,21 @@ export function attachWsHub(httpServer, sessionSecret) {
     const networks = ircManager.snapshotForUser(userId);
     send(ws, { kind: 'snapshot', networks });
     const readState = listReadStateForUser(userId);
+    const closed = closedKeySetForUser(userId);
     for (const conn of ircManager.listConnections(userId)) {
       const targets = new Set(listBufferTargets(conn.network.id));
       targets.add(`:server:${conn.network.id}`);
+      // Currently-joined channels are always shown — they take precedence over
+      // a stale closed flag (shouldn't normally exist since joining clears it,
+      // but defensive against autorejoin/state races).
       for (const ch of conn.channels.values()) targets.add(ch.name);
       for (const target of targets) {
+        if (target.startsWith(':server:')) {
+          // Server pseudo-buffer is uncloseable — never filter.
+        } else if (closed.has(`${conn.network.id}::${target}`)
+            && !conn.channels.has(target.toLowerCase())) {
+          continue;
+        }
         const events = listMessages(conn.network.id, target, { limit: 50 })
           .map((e) => decorateMessage(userId, e));
         const speakers = listSpeakers(conn.network.id, target);
@@ -295,6 +328,24 @@ export function attachWsHub(httpServer, sessionSecret) {
       case 'part':
         ircManager.partChannel(userId, msg.networkId, msg.channel, msg.reason);
         break;
+      case 'close-buffer': {
+        const networkId = Number(msg.networkId);
+        const target = typeof msg.target === 'string' ? msg.target : '';
+        // Server pseudo-buffer can't be closed (it's the per-network log).
+        if (!networkId || !target || target.startsWith(':server:')) break;
+        closeBuffer(userId, networkId, target);
+        if (target.startsWith('#')) {
+          // Send PART if connected; partChannel also flips channels.joined=0.
+          // If disconnected, partChannel is a no-op, so explicitly mark the
+          // channel as not-joined here to keep it from auto-rejoining the
+          // next time the network connects.
+          if (!ircManager.partChannel(userId, networkId, target, msg.reason)) {
+            upsertChannel(networkId, target, false);
+          }
+        }
+        fanOut(userId, { kind: 'buffer-closed', networkId, target });
+        break;
+      }
       case 'snapshot':
         sendSnapshot(ws, userId);
         break;

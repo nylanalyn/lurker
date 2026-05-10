@@ -1,5 +1,6 @@
 import IRC from 'irc-framework';
 import { insertMessage, listRecentBufferTargets } from '../db/messages.js';
+import { isClosed } from '../db/closedBuffers.js';
 import highlightRulesService from './highlightRulesService.js';
 
 const NON_PERSISTED_TYPES = new Set([
@@ -374,7 +375,9 @@ export class IrcConnection {
   // Buffers that should receive a /away marker line: every joined channel,
   // plus every private/query target with at least one message in the last
   // week. The 7-day window keeps long-cold DMs from getting marker spam every
-  // time the user goes away. Server pseudo-buffer is excluded.
+  // time the user goes away. Server pseudo-buffer and user-closed buffers are
+  // excluded — closing a DM should keep it gone, not have it resurrect each
+  // time you go away.
   openBufferTargets() {
     const set = new Set();
     for (const ch of this.channels.values()) set.add(ch.name);
@@ -384,7 +387,8 @@ export class IrcConnection {
         set.add(t);
       }
     } catch (_) { /* ignore */ }
-    return [...set];
+    const userId = this.network.user_id;
+    return [...set].filter((t) => !isClosed(userId, this.network.id, t));
   }
 
   // Mark the user away on this network. `message` is the full text that goes

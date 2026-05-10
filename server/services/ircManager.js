@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { IrcConnection } from './ircConnection.js';
 import { listNetworksForUser, getNetwork, listChannels, upsertChannel, deleteChannel } from '../db/networks.js';
+import { reopenBuffer } from '../db/closedBuffers.js';
 import db from '../db/index.js';
 
 class IrcManager extends EventEmitter {
@@ -76,6 +77,10 @@ class IrcManager extends EventEmitter {
     const conn = this.getConnection(userId, networkId);
     if (!conn) return false;
     upsertChannel(networkId, name, true);
+    // Joining is an explicit "I want this buffer back" — clear any stale
+    // closed flag from a prior close. The matching channel-joined event will
+    // recreate the buffer in clients via the normal flow.
+    reopenBuffer(userId, networkId, name);
     conn.join(name);
     return true;
   }
