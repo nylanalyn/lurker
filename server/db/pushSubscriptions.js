@@ -60,7 +60,10 @@ export function deleteById(id) {
 }
 
 export function touchSubscription(id) {
-  db.prepare("UPDATE push_subscriptions SET last_seen_at = datetime('now') WHERE id = ?").run(id);
+  // strftime with Z suffix so the value parses back as UTC on the client.
+  // SQLite's bare datetime('now') returns 'YYYY-MM-DD HH:MM:SS' with no TZ
+  // marker, which Date.parse() then treats as local time.
+  db.prepare("UPDATE push_subscriptions SET last_seen_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?").run(id);
 }
 
 // app_meta single-key store for VAPID config

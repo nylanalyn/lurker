@@ -315,10 +315,15 @@ function formatUA(ua) {
 
 function formatRelative(iso) {
   if (!iso) return '';
-  const t = Date.parse(iso);
+  // SQLite's `datetime('now')` returns 'YYYY-MM-DD HH:MM:SS' with no TZ
+  // marker; Date.parse() then treats it as local time and reports a future
+  // moment for users east of UTC offset zero. Treat unmarked timestamps as UTC.
+  const hasTz = /[zZ]|[+-]\d{2}:?\d{2}$/.test(iso);
+  const normalized = hasTz ? iso : iso.replace(' ', 'T') + 'Z';
+  const t = Date.parse(normalized);
   if (!t) return iso;
   const diff = Date.now() - t;
-  const sec = Math.round(diff / 1000);
+  const sec = Math.max(0, Math.round(diff / 1000));
   if (sec < 60) return `${sec}s ago`;
   const min = Math.round(sec / 60);
   if (min < 60) return `${min}m ago`;
