@@ -98,7 +98,6 @@ function rowClass(row) {
     self: row.m.self,
     alt: row.alt,
     highlight: !!row.m.matched,
-    dm: !!row.m.dm,
   };
 }
 
@@ -404,15 +403,14 @@ watch(() => props.pendingScrollId, async (id) => {
 .line.alt { background: var(--alt-bg); color: var(--alt-fg); }
 .line:hover { background: var(--bg-soft); }
 
-/* Matched highlight (rule fired) and DM lines: a left accent stripe and a
-   warm background tint. Sits above .alt so striping doesn't drown it out. */
-.line.highlight,
-.line.dm {
+/* Matched highlight (rule fired): left accent stripe and warm background
+   tint. Sits above .alt so striping doesn't drown it out. DMs are NOT
+   styled here — they get their own buffer + unread badge already. */
+.line.highlight {
   background: color-mix(in srgb, var(--warn) 12%, transparent);
   box-shadow: inset 3px 0 0 0 var(--warn);
 }
-.line.highlight.alt,
-.line.dm.alt {
+.line.highlight.alt {
   background: color-mix(in srgb, var(--warn) 18%, transparent);
 }
 .line.scroll-target {

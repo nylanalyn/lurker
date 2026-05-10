@@ -10,7 +10,6 @@
           v-for="m in matches"
           :key="`${m.networkId}::${m.target}::${m.id}`"
           class="match"
-          :class="{ dm: m.dm }"
           @click="onJump(m)"
         >
           <span class="time">{{ time(m.time) }}</span>
@@ -48,7 +47,10 @@ const matches = computed(() => {
   const out = [];
   for (const buf of Object.values(buffers.buffers)) {
     for (const m of buf.messages) {
-      if (m.matched || m.dm) {
+      // Highlights modal shows rule-matched lines only. DMs have their own
+      // buffer + unread badge as the signal; including them here would just
+      // duplicate that channel as a per-message list.
+      if (m.matched) {
         out.push({ ...m, networkId: buf.networkId, target: buf.target });
       }
     }
@@ -145,7 +147,6 @@ function onJump(m) {
   cursor: pointer;
 }
 .match:hover { background: var(--bg-soft); }
-.match.dm { box-shadow: inset 3px 0 0 0 var(--warn); }
 
 .time { color: var(--fg-muted); }
 .loc { color: var(--fg-muted); display: flex; gap: 4px; }

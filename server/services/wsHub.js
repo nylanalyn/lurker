@@ -13,25 +13,22 @@ import { SESSION_COOKIE } from '../middleware/auth.js';
 
 const DM_ELIGIBLE_TYPES = new Set(['message', 'action', 'notice']);
 
-function userNickFor(userId, networkId) {
-  const conn = ircManager.getConnection(userId, networkId);
-  return conn?.client?.user?.nick || conn?.network?.nick || null;
-}
-
-function isDmTarget(event, userNick) {
-  if (!userNick) return false;
+// Structural DM detection: ircConnection routes any direct message into a
+// buffer keyed by the *other* person's nick, so by the time we see an event
+// here the target is no longer your own nick. Anything that's not a channel
+// (`#…`) and not a server pseudo-buffer (`:server:…`) is a direct conversation
+// — that bucket includes both incoming DMs and your own outgoing DMs.
+function isDirect(event) {
   if (!DM_ELIGIBLE_TYPES.has(event.type)) return false;
   const target = event.target || '';
-  if (!target || target.startsWith('#') || target.startsWith(':server:')) return false;
-  return target.toLowerCase() === userNick.toLowerCase();
+  return !!target && !target.startsWith('#') && !target.startsWith(':server:');
 }
 
 function decorateMessage(userId, event) {
   if (!event || typeof event !== 'object') return event;
   const compiled = highlightRulesService.getCompiled(userId);
   const { matched, ruleId } = matchEvent(event, compiled);
-  const userNick = userNickFor(userId, event.networkId);
-  const dm = isDmTarget(event, userNick) && !event.self;
+  const dm = isDirect(event) && !event.self;
   return { ...event, matched, matchedRuleId: ruleId, dm };
 }
 

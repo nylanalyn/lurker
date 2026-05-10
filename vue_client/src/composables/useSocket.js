@@ -45,7 +45,9 @@ function applyEvent(event) {
       }
       if (!event.self && networks.activeKey !== `${event.networkId}::${event.target}`) {
         buffers.markUnread(event.networkId, event.target);
-        if (event.matched || event.dm) {
+        // DMs notify but aren't visually flagged as highlights — they
+        // already have their own buffer + unread badge as the signal.
+        if (event.matched) {
           buffers.markHighlight(event.networkId, event.target);
         }
       }
@@ -54,7 +56,7 @@ function applyEvent(event) {
       buffers.pushMessage(event);
       if (!event.self && networks.activeKey !== `${event.networkId}::${event.target}`) {
         buffers.markUnread(event.networkId, event.target);
-        if (event.matched || event.dm) {
+        if (event.matched) {
           buffers.markHighlight(event.networkId, event.target);
         }
       }
