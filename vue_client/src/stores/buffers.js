@@ -73,9 +73,23 @@ export const useBuffersStore = defineStore('buffers', {
     pushMessage(event) {
       if (!event.target) return;
       const buf = ensureBuffer(this, event.networkId, event.target);
+      const prevMaxId = buf.messages[buf.messages.length - 1]?.id ?? 0;
       buf.messages.push(event);
       if (buf.messages.length > MAX_PER_BUFFER) buf.messages.splice(0, buf.messages.length - MAX_PER_BUFFER);
       if (buf.oldestId == null && event.id != null) buf.oldestId = event.id;
+      // While the user is sitting in this buffer, keep the divider tracking
+      // the bottom UNLESS there's already an unread boundary visible (i.e.
+      // they entered with unread and may not have caught up). The check
+      // `dividerAfterId >= prevMaxId` is "no boundary currently shown" — in
+      // that case a fresh arrival shouldn't materialize one. If a boundary
+      // exists, leave it pinned until switch-away.
+      if (event.id != null && buf.dividerAfterId != null) {
+        const networks = useNetworksStore();
+        const isActive = networks.activeKey === `${event.networkId}::${event.target}`;
+        if (isActive && buf.dividerAfterId >= prevMaxId) {
+          buf.dividerAfterId = event.id;
+        }
+      }
       if (event.nick && buf.typing[event.nick]) {
         clearTypingTimer(event.networkId, event.target, event.nick);
         delete buf.typing[event.nick];
