@@ -1,5 +1,6 @@
 import IRC from 'irc-framework';
 import { insertMessage } from '../db/messages.js';
+import { upsertChannel } from '../db/networks.js';
 import highlightRulesService from './highlightRulesService.js';
 import { matchEvent } from './highlightEngine.js';
 
@@ -263,6 +264,14 @@ export class IrcConnection {
         kicked: event.kicked,
         text: event.message,
       });
+      // Mirror the self-PART path when we ourselves are the one kicked, so
+      // the buffer dims in the sidebar instead of staying styled as joined.
+      // Persisting joined=false here also prevents auto-rejoin on reconnect.
+      if (event.kicked && c.user.nick && event.kicked.toLowerCase() === c.user.nick.toLowerCase()) {
+        this.channels.delete(event.channel.toLowerCase());
+        try { upsertChannel(this.network.id, event.channel, false); } catch (_) { /* ignore */ }
+        this.publish({ type: 'channel-parted', target: event.channel });
+      }
     });
 
     c.on('quit', (event) => {
@@ -442,6 +451,40 @@ export class IrcConnection {
     c.on('back', (event) => {
       if (!event || !event.nick) return;
       this.applyMemberAway(event.nick, false);
+    });
+
+    // irc-framework aggregates RPL_WHOIS* (311/312/317/319/330/...) into a
+     // single 'whois' event when RPL_ENDOFWHOIS arrives. We fan it out as
+     // motd-style lines on the server buffer so the user actually sees the
+     // result of /whois (raw fall-through alone hides everything because the
+     // numerics are consumed by irc-framework instead of becoming messages).
+    c.on('whois', (event) => {
+      if (!event || !event.nick) return;
+      const lines = formatWhoisLines(event);
+      for (const text of lines) {
+        this.publish({ type: 'motd', target: this.serverTarget(), text });
+      }
+    });
+
+    // Channel list (`/LIST`). irc-framework batches RPL_LIST every 50 rows and
+    // again at RPL_LISTEND, so we forward each batch as it arrives — the UI
+    // can stream results into a growing list rather than blocking on the end
+    // sentinel. Targetless: not associated with any buffer.
+    c.on('channel list start', () => {
+      this.publishEphemeral({ type: 'chanlist-start' });
+    });
+    c.on('channel list', (channels) => {
+      this.publishEphemeral({
+        type: 'chanlist-batch',
+        channels: (channels || []).map((ch) => ({
+          channel: ch.channel,
+          num_users: ch.num_users,
+          topic: ch.topic || '',
+        })),
+      });
+    });
+    c.on('channel list end', () => {
+      this.publishEphemeral({ type: 'chanlist-end' });
     });
 
     c.on('irc error', (event) => {
@@ -660,3 +703,42 @@ export class IrcConnection {
 
 const PREFIX_MODES = new Set(['q', 'a', 'o', 'h', 'v']);
 function isPrefixMode(letter) { return PREFIX_MODES.has(letter); }
+
+// Render irc-framework's aggregated `whois` event into a small block of
+// human-readable lines. Order roughly mirrors what other IRC clients show:
+// identity → realname → host/ip → connection security → server → channels →
+// modes → idle/signon → registered/account/oper/bot → secure/certfp.
+function formatWhoisLines(w) {
+  const lines = [];
+  if (w.error === 'not_found') {
+    lines.push(`whois: no such nick ${w.nick}`);
+    return lines;
+  }
+  const userhost = [w.ident, w.hostname].filter(Boolean).join('@');
+  lines.push(`whois ${w.nick}${userhost ? ` (${userhost})` : ''}`);
+  if (w.real_name) lines.push(`  realname: ${w.real_name}`);
+  if (w.actual_hostname || w.actual_ip) {
+    const parts = [w.actual_hostname, w.actual_ip].filter(Boolean).join(' ');
+    lines.push(`  host: ${parts}`);
+  }
+  if (w.server) {
+    const info = w.server_info ? ` (${w.server_info})` : '';
+    lines.push(`  server: ${w.server}${info}`);
+  }
+  if (w.channels) lines.push(`  channels: ${w.channels}`);
+  if (w.modes) lines.push(`  modes: ${w.modes}`);
+  if (w.account) lines.push(`  account: ${w.account}`);
+  if (w.registered_nick) lines.push(`  registered: ${w.registered_nick}`);
+  if (w.operator) lines.push(`  oper: ${w.operator}`);
+  if (w.helpop) lines.push(`  helpop: ${w.helpop}`);
+  if (w.bot) lines.push(`  bot: ${w.bot}`);
+  if (w.secure) lines.push('  secure: yes');
+  if (w.certfp) lines.push(`  certfp: ${w.certfp}`);
+  if (w.away) lines.push(`  away: ${w.away}`);
+  if (w.idle != null) {
+    const idleSec = Number(w.idle);
+    const signonStr = w.logon ? ` (signon ${new Date(Number(w.logon) * 1000).toISOString()})` : '';
+    lines.push(`  idle: ${Number.isFinite(idleSec) ? `${idleSec}s` : w.idle}${signonStr}`);
+  }
+  return lines;
+}

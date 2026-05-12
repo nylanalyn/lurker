@@ -39,5 +39,8 @@ export function useTheme() {
     root.style.setProperty('--mono', String(settings.effective('look.font.family')));
     root.style.setProperty('--font-size', `${settings.effective('look.font.size')}px`);
     root.style.setProperty('--font-weight', String(settings.effective('look.font.weight')));
+    const macSmoothing = !!settings.effective('look.font.smoothing_macos');
+    root.style.setProperty('--font-smoothing-webkit', macSmoothing ? 'subpixel-antialiased' : 'auto');
+    root.style.setProperty('--font-smoothing-moz', 'auto');
   });
 }

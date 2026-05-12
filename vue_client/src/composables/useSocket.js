@@ -5,6 +5,7 @@ import { useAuthStore } from '../stores/auth.js';
 import { useSettingsStore } from '../stores/settings.js';
 import { useHighlightRulesStore } from '../stores/highlightRules.js';
 import { useInputHistoryStore } from '../stores/inputHistory.js';
+import { useChanlistStore } from '../stores/chanlist.js';
 
 let socket = null;
 const connected = ref(false);
@@ -141,6 +142,21 @@ function applyEvent(event) {
     case 'error':
       buffers.pushMessage({ ...event, target: event.target || `:server:${event.networkId}` });
       break;
+    case 'chanlist-start': {
+      const chanlist = useChanlistStore();
+      chanlist.start(event.networkId);
+      break;
+    }
+    case 'chanlist-batch': {
+      const chanlist = useChanlistStore();
+      chanlist.addBatch(event.networkId, event.channels || []);
+      break;
+    }
+    case 'chanlist-end': {
+      const chanlist = useChanlistStore();
+      chanlist.end(event.networkId);
+      break;
+    }
   }
 }
 

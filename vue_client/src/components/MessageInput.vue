@@ -436,6 +436,43 @@ function submit() {
   resetHistoryNav();
 }
 
+// Drop a synthetic, non-persisted info line into the current buffer so the
+// user sees the output of client-resolved commands like /help or argument
+// validation errors. id-less so pushMessage's replay guard doesn't trip.
+function localInfo(networkId, target, text) {
+  buffers.pushMessage({
+    networkId,
+    target,
+    type: 'motd',
+    text,
+    time: new Date().toISOString(),
+  });
+}
+
+const HELP_LINES = [
+  'commands:',
+  '  /me <text>             — emote in the current buffer',
+  '  /msg <nick> <text>     — open a DM and send (alias: /query)',
+  '  /join <#chan>          — join a channel',
+  '  /part [#chan] [reason] — leave channel (keeps buffer; alias: /leave)',
+  '  /close                 — close current buffer (parts if channel)',
+  '  /away [message]        — set away across every network (no arg clears)',
+  '  /back                  — clear away',
+  '  /whois <nick>          — query user info (renders in server buffer)',
+  '  /kick <nick> [reason]  — kick from current channel',
+  '  /mode <target> <flags> — set modes (target defaults to current channel)',
+  '  /topic [text]          — set/clear topic on current channel',
+  '  /nick <newnick>        — change your nick',
+  '  /quit [reason]         — disconnect from current network',
+  '  /list                  — list channels on current network',
+  '  /raw <line>            — send a raw IRC line (alias: /quote)',
+  '  /help                  — this list',
+];
+
+function isChannelTarget(t) {
+  return typeof t === 'string' && t.startsWith('#');
+}
+
 function handleCommand(line, networkId, target) {
   const [cmd, ...rest] = line.slice(1).split(/\s+/);
   const argLine = line.slice(1 + cmd.length).trim();
@@ -484,8 +521,73 @@ function handleCommand(line, networkId, target) {
     case 'back':
       socketSend({ type: 'back' });
       break;
+    case 'whois': {
+      const who = rest[0];
+      if (!who) { localInfo(networkId, target, 'usage: /whois <nick>'); return; }
+      socketSend({ type: 'raw', networkId, line: `WHOIS ${who}` });
+      break;
+    }
+    case 'kick': {
+      // /kick <nick> [reason]            (in a channel buffer)
+      // /kick <#chan> <nick> [reason]    (anywhere)
+      let channel; let nick; let reason;
+      if (rest[0] && rest[0].startsWith('#')) {
+        channel = rest[0]; nick = rest[1]; reason = rest.slice(2).join(' ');
+      } else {
+        channel = isChannelTarget(target) ? target : null;
+        nick = rest[0]; reason = rest.slice(1).join(' ');
+      }
+      if (!channel) { localInfo(networkId, target, 'usage: /kick [#chan] <nick> [reason] — no channel context'); return; }
+      if (!nick) { localInfo(networkId, target, 'usage: /kick [#chan] <nick> [reason]'); return; }
+      const trailer = reason ? ` :${reason}` : '';
+      socketSend({ type: 'raw', networkId, line: `KICK ${channel} ${nick}${trailer}` });
+      break;
+    }
+    case 'topic': {
+      // /topic                        — request current topic (server buffer)
+      // /topic <text>                 — set on current channel
+      // /topic <#chan> [text]         — set/get on another channel
+      let channel; let body;
+      if (rest[0] && rest[0].startsWith('#')) {
+        channel = rest[0];
+        body = line.slice(1 + cmd.length).trim().slice(channel.length).trim();
+      } else {
+        channel = isChannelTarget(target) ? target : null;
+        body = argLine;
+      }
+      if (!channel) { localInfo(networkId, target, 'usage: /topic [#chan] [text] — no channel context'); return; }
+      const trailer = body ? ` :${body}` : '';
+      socketSend({ type: 'raw', networkId, line: `TOPIC ${channel}${trailer}` });
+      break;
+    }
+    case 'nick': {
+      const newNick = rest[0];
+      if (!newNick) { localInfo(networkId, target, 'usage: /nick <newnick>'); return; }
+      socketSend({ type: 'raw', networkId, line: `NICK ${newNick}` });
+      break;
+    }
+    case 'mode': {
+      // /mode <flags>                  — apply to current channel
+      // /mode <target> <flags...>      — apply to target (channel or self)
+      if (!rest.length) { localInfo(networkId, target, 'usage: /mode [target] <flags> [args]'); return; }
+      const looksLikeFlagsOnly = /^[+-]/.test(rest[0]);
+      if (looksLikeFlagsOnly && isChannelTarget(target)) {
+        socketSend({ type: 'raw', networkId, line: `MODE ${target} ${rest.join(' ')}` });
+      } else {
+        socketSend({ type: 'raw', networkId, line: `MODE ${argLine}` });
+      }
+      break;
+    }
+    case 'quit': {
+      const reason = argLine || 'lurker';
+      socketSend({ type: 'raw', networkId, line: `QUIT :${reason}` });
+      break;
+    }
+    case 'list':
+      socketSend({ type: 'raw', networkId, line: argLine ? `LIST ${argLine}` : 'LIST' });
+      break;
     case 'help':
-      alert('Commands: /me, /msg <nick> <text>, /join #chan, /part [#chan] [reason], /close, /away [message], /back, /raw <line>');
+      for (const text of HELP_LINES) localInfo(networkId, target, text);
       break;
     default:
       socketSend({ type: 'raw', networkId, line: line.slice(1) });

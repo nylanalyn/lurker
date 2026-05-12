@@ -27,12 +27,21 @@ export const REGISTRY = Object.freeze([
     type: 'int',
     min: 100,
     max: 900,
-    default: 500,
+    default: 400,
     description:
       'Default font weight (100–900, in CSS steps of 100). ' +
-      "Bumped above 400 to roughly match terminals' visual density on macOS, " +
-      'where browsers no longer apply subpixel antialiasing. ' +
-      'Set 400 if your font lacks a Medium face.',
+      "Bump above 400 (e.g. 500) to roughly match terminals' visual density " +
+      'on macOS, where browsers no longer apply subpixel antialiasing. ' +
+      'Pairs with look.font.smoothing_macos to emulate Terminal.app rendering.',
+  },
+  {
+    key: 'look.font.smoothing_macos',
+    type: 'bool',
+    default: false,
+    description:
+      'Coax WebKit/Blink into denser, Terminal.app-style font rendering by setting ' +
+      '-webkit-font-smoothing: subpixel-antialiased. Off by default; the browser ' +
+      'default rendering is what most users expect.',
   },
 
   // ─── Core palette (Monokai Pro / Brad's iTerm theme) ───────────────────
@@ -276,7 +285,7 @@ export const REGISTRY = Object.freeze([
     type: 'int',
     min: 5,
     max: 3600,
-    default: 30,
+    default: 300,
     description:
       'How long to wait after the last client disconnects before setting AWAY. ' +
       'Avoids flapping on browser refreshes or brief network blips.',

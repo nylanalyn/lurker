@@ -26,6 +26,18 @@
         </button>
         <span class="title">{{ bufferLabel }}</span>
         <span class="spacer"></span>
+        <button
+          v-if="topic"
+          class="icon"
+          title="View topic"
+          @click="showTopic = true"
+        ><i class="fa-solid fa-circle-info"></i></button>
+        <button
+          v-if="isServerBuffer"
+          class="icon"
+          title="Browse channels"
+          @click="showChannelList = true"
+        ><i class="fa-solid fa-list"></i></button>
         <button class="icon" title="Highlights" @click="showHighlights = true">
           <i class="fa-regular fa-bell"></i>
         </button>
@@ -57,6 +69,17 @@
       @close="showHighlights = false"
       @jump="onJumpToMessage"
     />
+    <TopicModal
+      v-if="showTopic && activeKey"
+      :topic="topic"
+      :label="bufferLabel"
+      @close="showTopic = false"
+    />
+    <ChannelListModal
+      v-if="showChannelList && active"
+      :network-id="active.networkId"
+      @close="showChannelList = false"
+    />
   </div>
 </template>
 
@@ -73,10 +96,12 @@ import MessageInput from '../components/MessageInput.vue';
 import MemberList from '../components/MemberList.vue';
 import StatusBar from '../components/StatusBar.vue';
 import HighlightsModal from '../components/HighlightsModal.vue';
+import TopicModal from '../components/TopicModal.vue';
+import ChannelListModal from '../components/ChannelListModal.vue';
 
 const buffers = useBuffersStore();
 const { connected } = useSocket();
-const { activeKey, isChannel, bufferLabel } = useActiveBuffer();
+const { active, activeKey, isChannel, isServerBuffer, bufferLabel, topic } = useActiveBuffer();
 
 // Pin --viewport-h to the visualViewport height so the shell stays glued to
 // the visible region when the iOS soft keyboard pushes content up.
@@ -88,6 +113,8 @@ useVisualViewportHeight();
 // land on the buffer screen with no active buffer.
 const screen = ref('list');
 const showHighlights = ref(false);
+const showTopic = ref(false);
+const showChannelList = ref(false);
 const pendingScrollId = ref(null);
 const messageInputRef = ref(null);
 

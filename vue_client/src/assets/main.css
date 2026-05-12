@@ -22,7 +22,7 @@
 
   --mono: 'Input Mono', 'Input', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --font-size: 14px;
-  --font-weight: 500;
+  --font-weight: 400;
 }
 
 * { box-sizing: border-box; }
@@ -36,10 +36,8 @@ html, body, #app {
   font-size: var(--font-size);
   font-weight: var(--font-weight);
   line-height: 1.55;
-  /* Try to coax Safari/Chrome into the denser rendering Terminal.app uses;
-     macOS ignores subpixel-antialiased on modern versions but it's harmless. */
-  -webkit-font-smoothing: subpixel-antialiased;
-  -moz-osx-font-smoothing: auto;
+  -webkit-font-smoothing: var(--font-smoothing-webkit, auto);
+  -moz-osx-font-smoothing: var(--font-smoothing-moz, auto);
   text-rendering: optimizeLegibility;
 }
 

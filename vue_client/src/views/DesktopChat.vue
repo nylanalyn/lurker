@@ -21,9 +21,20 @@
         title="Edit network"
         @click="editActiveNetwork"
       ><i class="fa-solid fa-gear"></i></button>
+      <button
+        v-if="isServerBuffer"
+        class="link"
+        title="Browse channels"
+        @click="showChannelList = true"
+      ><i class="fa-solid fa-list"></i></button>
       <template v-if="topic">
         <span class="sep">│</span>
-        <span class="topic-text"><LinkedText :text="topic" /></span>
+        <button
+          type="button"
+          class="topic-text"
+          title="View full topic"
+          @click="showTopic = true"
+        ><LinkedText :text="topic" /></button>
       </template>
     </header>
     <div v-if="active" class="topic-divider"></div>
@@ -43,6 +54,17 @@
       @close="showHighlights = false"
       @jump="onJumpToMessage"
     />
+    <TopicModal
+      v-if="showTopic && active"
+      :topic="topic"
+      :label="bufferLabel"
+      @close="showTopic = false"
+    />
+    <ChannelListModal
+      v-if="showChannelList && active"
+      :network-id="active.networkId"
+      @close="showChannelList = false"
+    />
   </div>
 </template>
 
@@ -60,6 +82,8 @@ import StatusBar from '../components/StatusBar.vue';
 import NetworkForm from '../components/NetworkForm.vue';
 import HighlightsModal from '../components/HighlightsModal.vue';
 import LinkedText from '../components/LinkedText.vue';
+import TopicModal from '../components/TopicModal.vue';
+import ChannelListModal from '../components/ChannelListModal.vue';
 
 const buffers = useBuffersStore();
 const { connected } = useSocket();
@@ -68,6 +92,8 @@ const { active, topic, isServerBuffer, bufferLabel } = useActiveBuffer();
 const showNetworkForm = ref(false);
 const editingNetwork = ref(null);
 const showHighlights = ref(false);
+const showTopic = ref(false);
+const showChannelList = ref(false);
 const pendingScrollId = ref(null);
 const messageInputRef = ref(null);
 
@@ -196,7 +222,18 @@ useChatBootstrap({ onJump: onJumpToMessage });
   color: var(--fg-muted);
   text-overflow: ellipsis;
   overflow: hidden;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  min-width: 0;
 }
+.topic .topic-text:hover { color: var(--fg); }
+.topic .topic-text:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
 
 /* These selectors target the root elements of the imported components.
    Vue 3 scoped CSS attaches the parent's data-v attribute to a child

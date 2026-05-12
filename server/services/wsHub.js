@@ -432,6 +432,20 @@ export function attachWsHub(httpServer, sessionSecret) {
       case 'raw':
         ircManager.getConnection(userId, msg.networkId)?.raw(msg.line);
         break;
+      case 'list-channels': {
+        // Kicks off a /LIST cycle on the given network. Results stream back
+        // as `chanlist-start` / `chanlist-batch` / `chanlist-end` IRC events
+        // from ircConnection — clients filter by networkId and accumulate.
+        const conn = ircManager.getConnection(userId, msg.networkId);
+        if (!conn) {
+          send(ws, { kind: 'error', text: 'network not connected' });
+          break;
+        }
+        const filter = typeof msg.filter === 'string' ? msg.filter.trim() : '';
+        try { conn.raw(filter ? `LIST ${filter}` : 'LIST'); }
+        catch (_) { /* ignore — server will reject if not allowed */ }
+        break;
+      }
       case 'away': {
         // Empty/whitespace-only message → treat as /back (idiomatic IRC).
         const message = (msg.message || '').trim();
