@@ -1,9 +1,27 @@
 import db from './index.js';
 
+// Alt parity is computed inline against the buffer's most recent striped row.
+// Better-sqlite3 is synchronous and the IRC pipeline is single-threaded, so
+// the subselect-then-insert can't observe a torn write — no transaction needed.
+// Non-striped types pass through with alt=0; the value is meaningless for them
+// and the client never reads it.
 const insertStmt = db.prepare(`
-  INSERT INTO messages (network_id, target, time, type, nick, text, kind, self, extra, matched_rule_id)
-  VALUES (@networkId, @target, @time, @type, @nick, @text, @kind, @self, @extra, @matchedRuleId)
+  INSERT INTO messages (network_id, target, time, type, nick, text, kind, self, extra, matched_rule_id, alt)
+  VALUES (
+    @networkId, @target, @time, @type, @nick, @text, @kind, @self, @extra, @matchedRuleId,
+    CASE WHEN @type IN ('message', 'action', 'notice')
+         THEN 1 - COALESCE(
+           (SELECT alt FROM messages
+             WHERE network_id = @networkId AND target = @target
+               AND type IN ('message', 'action', 'notice')
+             ORDER BY id DESC LIMIT 1),
+           1)
+         ELSE 0
+    END
+  )
 `);
+
+const altByIdStmt = db.prepare(`SELECT alt FROM messages WHERE id = ?`);
 
 export function insertMessage(row) {
   const result = insertStmt.run({
@@ -18,7 +36,9 @@ export function insertMessage(row) {
     extra: row.extra ? JSON.stringify(row.extra) : null,
     matchedRuleId: row.matchedRuleId ?? null,
   });
-  return result.lastInsertRowid;
+  const id = result.lastInsertRowid;
+  const altRow = altByIdStmt.get(id);
+  return { id, alt: altRow?.alt === 1 };
 }
 
 function rowToEvent(row) {
@@ -32,6 +52,7 @@ function rowToEvent(row) {
     text: row.text,
     kind: row.kind,
     self: !!row.self,
+    alt: row.alt === 1,
     matched: row.matched_rule_id != null,
     matchedRuleId: row.matched_rule_id,
   };

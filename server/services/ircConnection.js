@@ -129,7 +129,7 @@ export class IrcConnection {
       } catch (e) {
         console.warn('[highlight] match-on-insert failed:', e?.message || e);
       }
-      const id = insertMessage({
+      const { id, alt } = insertMessage({
         networkId: this.network.id,
         target: event.target,
         time,
@@ -142,6 +142,7 @@ export class IrcConnection {
         matchedRuleId,
       });
       enriched.id = id;
+      enriched.alt = alt;
       enriched.matched = matchedRuleId != null;
       enriched.matchedRuleId = matchedRuleId;
     }

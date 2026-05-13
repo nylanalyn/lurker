@@ -150,11 +150,15 @@ const PRESENCE_MARKER_TTL_MS = 30 * 60 * 1000;
 const now = ref(Date.now());
 let nowTimer = null;
 
+// Striped row types — chat-shaped events that receive .line.alt zebra striping.
+// System events (join/part/quit/nick/mode/topic/etc.) are never striped, so
+// smart-filtering them out can't desync the pattern. Authoritative parity is
+// stored server-side on messages.alt per (network_id, target), computed at
+// insert time across only these types.
+const STRIPED_TYPES = new Set(['message', 'action', 'notice']);
+
 // One-pass walk over messages to (a) decide which rows the smart filter
-// should hide and (b) tag rows with alt-row striping. Striping is derived
-// from message id parity so it stays stable across smart-filter visibility
-// flips and backlog prepends — counting visible rows here used to recolor
-// the whole list any time a quiet nick spoke or a history page loaded.
+// should hide and (b) tag rows with alt-row striping.
 const renderRows = computed(() => {
   const list = messages.value;
   const buf = buffer.value;
@@ -237,7 +241,7 @@ const renderRows = computed(() => {
       out.push({ divider: 'unread', key: 'unread-divider' });
       dividerInserted = true;
     }
-    out.push({ m, alt: (m.id & 1) === 1, key });
+    out.push({ m, alt: STRIPED_TYPES.has(m.type) && !!m.alt, key });
   }
 
   // Both presence timestamps newer than every loaded message → markers land

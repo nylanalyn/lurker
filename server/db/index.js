@@ -343,10 +343,16 @@ db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_matched
          ON messages(network_id, target, id DESC)
          WHERE matched_rule_id IS NOT NULL`);
 
+// Per-(network, target) alt-row parity, computed at insert time so the client
+// can stripe chat lines without doing its own counting. Only chat-shaped types
+// (message/action/notice) flip the bit; system events store 0 and are never
+// styled with .line.alt. See schemaVersion < 2 backfill below.
+ensureColumn('messages', 'alt', 'INTEGER NOT NULL DEFAULT 0');
+
 // Schema versioning lets us retire one-shot recovery blocks once every
 // production DB has run through them. Bump SCHEMA_VERSION when adding a new
 // recovery block, and delete blocks for versions far enough in the past.
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const schemaVersionRow = db
   .prepare(`SELECT value FROM app_meta WHERE key = 'schema_version'`)
   .get();
@@ -444,6 +450,28 @@ if (schemaVersion < 1) {
       db.pragma(`foreign_keys = ${prevFk ? 'ON' : 'OFF'}`);
     }
   }
+}
+
+if (schemaVersion < 2) {
+  // Backfill messages.alt for existing rows. Walk every chat-shaped row in id
+  // order, keeping a per-(network_id, target) parity that flips on each one;
+  // system events keep alt=0. Fresh installs hit zero rows and finish instantly.
+  const stripedRows = db
+    .prepare(`SELECT id, network_id, target FROM messages
+              WHERE type IN ('message', 'action', 'notice')
+              ORDER BY id ASC`)
+    .all();
+  const setAlt = db.prepare(`UPDATE messages SET alt = ? WHERE id = ?`);
+  const backfill = db.transaction(() => {
+    const parity = new Map();
+    for (const row of stripedRows) {
+      const key = `${row.network_id} ${row.target}`;
+      const next = (parity.get(key) ?? 1) ^ 1;
+      parity.set(key, next);
+      setAlt.run(next, row.id);
+    }
+  });
+  backfill();
 }
 
 if (schemaVersion < SCHEMA_VERSION) {
