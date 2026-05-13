@@ -84,17 +84,32 @@ export const useBuffersStore = defineStore('buffers', {
       buf.messages.push(event);
       if (buf.messages.length > MAX_PER_BUFFER) buf.messages.splice(0, buf.messages.length - MAX_PER_BUFFER);
       if (buf.oldestId == null && event.id != null) buf.oldestId = event.id;
-      // While the user is sitting in this buffer, keep the divider tracking
-      // the bottom UNLESS there's already an unread boundary visible (i.e.
-      // they entered with unread and may not have caught up). The check
-      // `dividerAfterId >= prevMaxId` is "no boundary currently shown" — in
-      // that case a fresh arrival shouldn't materialize one. If a boundary
-      // exists, leave it pinned until switch-away.
-      if (event.id != null && buf.dividerAfterId != null) {
+      if (event.id != null) {
         const networks = useNetworksStore();
         const isActive = networks.activeKey === `${event.networkId}::${event.target}`;
-        if (isActive && buf.dividerAfterId >= prevMaxId) {
-          buf.dividerAfterId = event.id;
+        if (isActive) {
+          // While the user is sitting in this buffer, keep the divider
+          // tracking the bottom UNLESS there's already an unread boundary
+          // visible (i.e. they entered with unread and may not have caught
+          // up). `dividerAfterId >= prevMaxId` is "no boundary currently
+          // shown" — in that case a fresh arrival shouldn't materialize one.
+          if (buf.dividerAfterId != null && buf.dividerAfterId >= prevMaxId) {
+            buf.dividerAfterId = event.id;
+          }
+          // Keep the server's lastReadId synced live. Sending on each live
+          // message (rather than only on switch-away) means a tab close,
+          // reload, or dropped socket while the user is reading still
+          // leaves the buffer fully marked read. Server clamps with MAX(),
+          // so this is idempotent and safe under reorder.
+          if (event.id > buf.lastReadId) {
+            buf.lastReadId = event.id;
+            socketSend({
+              type: 'mark-read',
+              networkId: event.networkId,
+              target: event.target,
+              messageId: event.id,
+            });
+          }
         }
       }
       if (event.nick && buf.typing[event.nick]) {
@@ -272,10 +287,12 @@ export const useBuffersStore = defineStore('buffers', {
       if (!buf) return;
       buf.highlighted += 1;
     },
-    // Switch to a buffer: send mark-read for the one we're leaving, snapshot
-    // the divider position on the one we're entering, and clear its local
-    // unread/highlighted counts. Single entry point so the BufferList click
-    // and the highlights-modal jump go through the same flow.
+    // Switch to a buffer. We mark the entered buffer read on focus-IN (not
+    // on focus-OUT of the previous one) so that a tab close / reload / lost
+    // socket before switch-away still leaves the buffer marked read — no
+    // phantom divider on the next session. The previous buffer's pointer
+    // is already current because pushMessage keeps it synced live while
+    // focused (see pushMessage), so leaving it just drops local state.
     activate(networkId, target) {
       const networks = useNetworksStore();
       const newKey = `${networkId}::${target}`;
@@ -283,23 +300,7 @@ export const useBuffersStore = defineStore('buffers', {
       if (prevKey && prevKey !== newKey) {
         const prev = this.buffers[prevKey];
         if (prev) {
-          const lastMsg = prev.messages[prev.messages.length - 1];
-          const lastId = lastMsg?.id ?? 0;
-          if (lastId > prev.lastReadId) {
-            // Optimistically advance local pointer so a fast re-activate
-            // doesn't re-show the just-read divider before the server's
-            // read-state broadcast lands. Server clamps with MAX().
-            prev.lastReadId = lastId;
-            socketSend({
-              type: 'mark-read',
-              networkId: prev.networkId,
-              target: prev.target,
-              messageId: lastId,
-            });
-          }
           prev.dividerAfterId = null;
-          // Local clear is also optimistic; the server's read-state broadcast
-          // will overwrite with authoritative values shortly.
           prev.unread = 0;
           prev.highlighted = 0;
           prev.highlightsCapped = false;
@@ -307,13 +308,29 @@ export const useBuffersStore = defineStore('buffers', {
       }
       networks.setActive(networkId, target);
       const buf = ensureBuffer(this, networkId, target);
-      // Snapshot the divider on first activation. Re-activating without
-      // having left (shouldn't happen given prevKey check above, but defensive)
-      // leaves the existing snapshot alone.
+      // Snapshot the divider from the CURRENT lastReadId before we advance
+      // it below. The divider stays pinned to this snapshot for the
+      // duration of the visit (cleared on switch-away).
       if (buf.dividerAfterId == null) buf.dividerAfterId = buf.lastReadId || 0;
       buf.unread = 0;
       buf.highlighted = 0;
       buf.highlightsCapped = false;
+      // Advance the read pointer to the latest known message id. Server
+      // clamps with MAX(), so this is a safe no-op when there's nothing
+      // newer than lastReadId. The optimistic local bump prevents a fast
+      // re-activate from re-snapshotting an out-of-date divider before
+      // the server's read-state echo lands.
+      const lastMsg = buf.messages[buf.messages.length - 1];
+      const lastId = lastMsg?.id ?? 0;
+      if (lastId > buf.lastReadId) {
+        buf.lastReadId = lastId;
+        socketSend({
+          type: 'mark-read',
+          networkId,
+          target,
+          messageId: lastId,
+        });
+      }
       // For DMs, ask the server to WHOIS-probe the peer so the banner/sidebar
       // dim reflect current state rather than a possibly-stale cached value.
       // The probe is silent (no /whois reply in the server buffer); only the
