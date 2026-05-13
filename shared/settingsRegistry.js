@@ -586,7 +586,7 @@ export const REGISTRY = Object.freeze([
     category: 'highlights',
     group: 'alerts',
     type: 'enum',
-    choices: ['ping', 'chime', 'pop', 'beep', 'knock'],
+    choices: ['ping', 'chime', 'pop', 'beep', 'knock', 'plink'],
     default: 'ping',
     description:
       'Which bundled sound to play. Files live in /sounds/<choice>.mp3 on ' +

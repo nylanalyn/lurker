@@ -10,6 +10,7 @@ Drop short MP3 files here, matching the registry choices:
 - `pop.mp3`
 - `beep.mp3`
 - `knock.mp3`
+- `plink.mp3`
 
 Keep each clip under ~1 second; the client preloads them lazily on first play.
 
