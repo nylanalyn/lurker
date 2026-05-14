@@ -1,0 +1,223 @@
+<template>
+  <div class="modal" @click.self="$emit('close')">
+    <div class="card" tabindex="-1">
+      <header class="head">
+        <input
+          ref="inputEl"
+          v-model="query"
+          class="filter"
+          type="text"
+          placeholder="jump to channel or DM…"
+          autocomplete="off"
+          spellcheck="false"
+          @keydown="onKeydown"
+        />
+        <button class="link" @click="$emit('close')" title="close"><i class="fa-solid fa-xmark"></i></button>
+      </header>
+      <ul v-if="rows.length" ref="listEl" class="list">
+        <li
+          v-for="(row, i) in rows"
+          :key="`${row.networkId}::${row.target}`"
+          :class="{ row: true, active: i === selected }"
+          @click="pick(row)"
+          @mouseenter="selected = i"
+        >
+          <span class="net">{{ row.networkName }}</span>
+          <span class="sep">/</span>
+          <span class="target" :style="row.style">{{ row.label }}</span>
+          <span v-if="row.unread > 0" class="badge">{{ row.unread }}</span>
+        </li>
+      </ul>
+      <p v-else class="empty">No matches.</p>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { computed, onMounted, ref, watch, nextTick } from 'vue';
+import { useNetworksStore } from '../stores/networks.js';
+import { useBuffersStore } from '../stores/buffers.js';
+import { usePinsStore } from '../stores/pins.js';
+import { useNickColors } from '../composables/useNickColors.js';
+import { flattenBufferOrder } from '../utils/bufferOrder.js';
+
+const emit = defineEmits(['close']);
+
+const networks = useNetworksStore();
+const buffers = useBuffersStore();
+const pins = usePinsStore();
+const nicks = useNickColors();
+
+const query = ref('');
+const selected = ref(0);
+const inputEl = ref(null);
+const listEl = ref(null);
+
+function isServerTarget(t) { return t.startsWith(':server:'); }
+function isDmTarget(t) { return !isServerTarget(t) && !t.startsWith('#'); }
+
+function netById(id) {
+  return networks.networks.find((n) => n.id === id);
+}
+
+function dmStyle(networkId, target) {
+  if (!isDmTarget(target)) return null;
+  const selfNick = networks.states[networkId]?.nick;
+  if (selfNick && target.toLowerCase() === selfNick.toLowerCase()) return null;
+  const c = nicks.color(target);
+  return c ? { color: c } : null;
+}
+
+const allRows = computed(() => {
+  const order = flattenBufferOrder({
+    networks: networks.networks,
+    buffers,
+    pins,
+  });
+  return order.map((entry) => {
+    const net = netById(entry.networkId);
+    const buf = buffers.byKey(`${entry.networkId}::${entry.target}`);
+    const isServer = isServerTarget(entry.target);
+    return {
+      networkId: entry.networkId,
+      target: entry.target,
+      networkName: net?.name || `net:${entry.networkId}`,
+      label: isServer ? '[server]' : entry.target,
+      unread: buf?.unread || 0,
+      style: dmStyle(entry.networkId, entry.target),
+    };
+  });
+});
+
+const rows = computed(() => {
+  const q = query.value.trim().toLowerCase();
+  if (!q) return allRows.value;
+  return allRows.value.filter((r) => {
+    return r.label.toLowerCase().includes(q)
+      || r.networkName.toLowerCase().includes(q);
+  });
+});
+
+watch(rows, () => { selected.value = 0; });
+
+function pick(row) {
+  buffers.activate(row.networkId, row.target);
+  emit('close');
+}
+
+function onKeydown(e) {
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (rows.value.length === 0) return;
+    selected.value = (selected.value + 1) % rows.value.length;
+    scrollSelectedIntoView();
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (rows.value.length === 0) return;
+    selected.value = (selected.value - 1 + rows.value.length) % rows.value.length;
+    scrollSelectedIntoView();
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    const row = rows.value[selected.value];
+    if (row) pick(row);
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    emit('close');
+  }
+}
+
+function scrollSelectedIntoView() {
+  nextTick(() => {
+    const el = listEl.value;
+    if (!el) return;
+    const child = el.children[selected.value];
+    child?.scrollIntoView({ block: 'nearest' });
+  });
+}
+
+onMounted(() => {
+  // Pre-select the first row that isn't the currently active buffer so Enter
+  // is a useful default — switching to wherever you were last vs. staying put.
+  const activeKey = networks.activeKey;
+  const list = rows.value;
+  const idx = list.findIndex((r) => `${r.networkId}::${r.target}` !== activeKey);
+  selected.value = idx >= 0 ? idx : 0;
+  setTimeout(() => inputEl.value?.focus(), 0);
+});
+</script>
+
+<style scoped>
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  z-index: 100;
+}
+.card {
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  width: min(560px, 92vw);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  outline: none;
+}
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.filter {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  font: inherit;
+}
+.filter:focus { outline: none; border-color: var(--accent); }
+.link {
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font: inherit;
+  padding: 0 4px;
+}
+.link:hover { color: var(--fg); }
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+.row.active { background: var(--bg-soft); }
+.row .net { color: var(--accent); }
+.row .sep { color: var(--border); }
+.row .target { flex: 1; color: var(--fg); }
+.row .badge { color: var(--accent); }
+
+.empty {
+  text-align: center;
+  color: var(--fg-muted);
+  font-style: italic;
+  padding: 24px;
+}
+</style>

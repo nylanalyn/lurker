@@ -7,7 +7,7 @@ import highlightRulesService from './highlightRulesService.js';
 import * as pushService from './pushService.js';
 import { findSession } from '../db/sessions.js';
 import { findUserById, touchUserLastSeen } from '../db/users.js';
-import { listMessages, listBufferTargets, listSpeakers, countNewer, countHighlightsNewer, COUNTABLE_TYPES } from '../db/messages.js';
+import { listMessages, listBufferTargets, listSpeakers, countNewer, countHighlightsNewer, maxIdByBuffer, COUNTABLE_TYPES } from '../db/messages.js';
 import { listReadStateForUser, getReadState, setReadState } from '../db/bufferReads.js';
 import { addEntry as addInputHistory, listRecent as listRecentInputHistory } from '../db/inputHistory.js';
 import {
@@ -594,6 +594,24 @@ export function attachWsHub(httpServer, sessionSecret) {
         if (!networkId || !target || !Number.isFinite(requested) || requested <= 0) break;
         const lastReadId = setReadState(userId, networkId, target, requested);
         broadcastReadState(userId, networkId, target, lastReadId);
+        break;
+      }
+      case 'mark-all-read': {
+        // Clamp every buffer's read pointer to its tail across all of this
+        // user's networks. Skip buffers already at-or-past the tail so we
+        // don't broadcast a no-op read-state to every tab.
+        for (const conn of ircManager.listConnections(userId)) {
+          const networkId = conn.network.id;
+          for (const row of maxIdByBuffer(networkId)) {
+            const target = row.target;
+            const maxId = Number(row.maxId);
+            if (!target || !Number.isFinite(maxId) || maxId <= 0) continue;
+            const before = getReadState(userId, networkId, target);
+            if (before >= maxId) continue;
+            const after = setReadState(userId, networkId, target, maxId);
+            broadcastReadState(userId, networkId, target, after);
+          }
+        }
         break;
       }
       case 'input-history-add': {

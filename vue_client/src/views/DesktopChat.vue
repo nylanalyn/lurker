@@ -89,6 +89,14 @@
       v-if="showUploads"
       @close="showUploads = false"
     />
+    <QuickSwitcher
+      v-if="showSwitcher"
+      @close="showSwitcher = false"
+    />
+    <KeyboardHelpModal
+      v-if="showKbdHelp"
+      @close="showKbdHelp = false"
+    />
   </div>
 </template>
 
@@ -110,6 +118,9 @@ import LinkedText from '../components/LinkedText.vue';
 import TopicModal from '../components/TopicModal.vue';
 import ChannelListModal from '../components/ChannelListModal.vue';
 import RecentUploadsModal from '../components/RecentUploadsModal.vue';
+import QuickSwitcher from '../components/QuickSwitcher.vue';
+import KeyboardHelpModal from '../components/KeyboardHelpModal.vue';
+import { useKeyboardShortcuts } from '../composables/useKeyboardShortcuts.js';
 
 const buffers = useBuffersStore();
 const { connected } = useSocket();
@@ -122,8 +133,15 @@ const showHighlights = ref(false);
 const showTopic = ref(false);
 const showChannelList = ref(false);
 const showUploads = ref(false);
+const showSwitcher = ref(false);
+const showKbdHelp = ref(false);
 const pendingScrollId = ref(null);
 const messageInputRef = ref(null);
+
+useKeyboardShortcuts({
+  onOpenSwitcher: () => { showSwitcher.value = true; },
+  onOpenHelp: () => { showKbdHelp.value = true; },
+});
 
 const showChannels = computed(() => settings.effective('look.layout.show_channel_list'));
 const showMembers = computed(() => settings.effective('look.layout.show_member_list'));

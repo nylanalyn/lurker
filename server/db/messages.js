@@ -99,6 +99,14 @@ export function listBufferTargets(networkId) {
     .map((r) => r.target);
 }
 
+// (target, max_id) per buffer in this network. Used by /mark-all-read so the
+// server can clamp every buffer's read pointer to its tail in one pass.
+export function maxIdByBuffer(networkId) {
+  return db
+    .prepare('SELECT target, MAX(id) AS maxId FROM messages WHERE network_id = ? GROUP BY target')
+    .all(networkId);
+}
+
 // Cheap "does the user have any history with this target?" check used by the
 // no_such_nick router: only route a DM-shaped error into a per-nick buffer if
 // the user has actually conversed with that nick. Stops typo /whois replies
