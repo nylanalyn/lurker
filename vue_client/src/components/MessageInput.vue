@@ -19,7 +19,9 @@
       v-model="text"
       :placeholder="placeholder"
       :disabled="!active"
-      autocomplete="off"
+      :spellcheck="systemFeatures.spellcheck"
+      :autocorrect="systemFeatures.autocorrect"
+      :autocapitalize="systemFeatures.autocapitalize"
       @keydown="onKeydown"
       @paste="onPaste"
       @blur="resetCompletion"
@@ -62,6 +64,7 @@ import { socketSend, socketSendWithAck } from '../composables/useSocket.js';
 import { requestScrollToBottom } from '../composables/useScrollState.js';
 import { setComposingState } from '../composables/useComposing.js';
 import { chunkCountForSay, chunkCountForAction } from '../utils/messageSplit.js';
+import { buildNickCandidates } from '../utils/nickCompletion.js';
 import NickPicker from './NickPicker.vue';
 
 const networks = useNetworksStore();
@@ -95,6 +98,19 @@ const placeholder = computed(() => {
   if (!active.value) return 'Select a buffer';
   if (isServer.value) return '/raw <line>';
   return 'try /help';
+});
+// HTML attribute values for the system text features. spellcheck is the only
+// one the browser parses as a boolean; the others take "on"/"off" or an enum.
+// autocapitalize rides on input.autocorrect because Safari silently re-applies
+// sentence-start capitalization whenever autocorrect is on, regardless of any
+// autocapitalize="off" hint — so toggling autocorrect off has to kill both.
+const systemFeatures = computed(() => {
+  const autocorrectOn = settings.effective('input.autocorrect') !== false;
+  return {
+    spellcheck: settings.effective('input.spellcheck') !== false,
+    autocorrect: autocorrectOn ? 'on' : 'off',
+    autocapitalize: autocorrectOn ? 'sentences' : 'off',
+  };
 });
 // IRC channel prefix priority: q > a > o > h > v. The prompt prepends the
 // highest-precedence prefix character we hold in the active channel, so the
@@ -273,36 +289,8 @@ function tokenAtCursor(value, cursor) {
 }
 
 function buildNickMatches(buf, networkId, prefix) {
-  const lower = prefix.toLowerCase();
-  const seen = new Set();
-  // Pre-seed with our own nick so neither the speakers map (defense against
-  // pre-fix stale state) nor the members list (which always contains us)
-  // surfaces it. Tab-completing your own name is never useful.
-  const own = networks.states[networkId]?.nick;
-  if (own) seen.add(own.toLowerCase());
-  const out = [];
-  // Speakers first (reverse-chronological).
-  const speakers = Object.values(buf.speakers || {})
-    .sort((a, b) => b.lastTime - a.lastTime);
-  for (const s of speakers) {
-    if (!s.nick.toLowerCase().startsWith(lower)) continue;
-    if (seen.has(s.nick.toLowerCase())) continue;
-    seen.add(s.nick.toLowerCase());
-    out.push(s.nick);
-  }
-  // Channel members not already represented (alphabetical).
-  const memberNames = (buf.members || [])
-    .map((m) => (typeof m === 'string' ? m : m.nick))
-    .filter(Boolean)
-    .sort((a, b) => a.localeCompare(b));
-  for (const n of memberNames) {
-    const lc = n.toLowerCase();
-    if (seen.has(lc)) continue;
-    if (!lc.startsWith(lower)) continue;
-    seen.add(lc);
-    out.push(n);
-  }
-  return out;
+  const own = networks.states[networkId]?.nick || '';
+  return buildNickCandidates(buf, own, prefix).map((c) => c.nick);
 }
 
 function buildChannelMatches(networkId, prefix) {

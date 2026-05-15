@@ -975,10 +975,11 @@ async function onRuleAdd() {
 }
 
 // Category / group titles for the sidebar TOC and subheadings.
-const CATEGORY_ORDER = ['uploads', 'away', 'chat', 'appearance'];
+const CATEGORY_ORDER = ['uploads', 'away', 'input', 'chat', 'appearance'];
 const CATEGORY_TITLES = {
   appearance: 'appearance',
   chat: 'chat',
+  input: 'input bar',
   away: 'away',
   uploads: 'uploads',
 };
@@ -997,6 +998,7 @@ const GROUP_TITLES = {
   pipeline: 'image pipeline',
   catbox: 'catbox.moe',
   hoarder: 'hoarder',
+  system_features: 'system text features',
 };
 
 const filtersActive = computed(() => !!search.value.trim() || modifiedOnly.value);

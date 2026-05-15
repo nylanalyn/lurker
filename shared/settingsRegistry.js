@@ -761,6 +761,36 @@ export const REGISTRY = Object.freeze([
       'system.timezone.',
   },
 
+  // ─── Input bar (system text features) ─────────────────────────────────
+  // Each setting maps directly to an HTML attribute on the chat input
+  // element. Defaults are all true so the input behaves like a normal text
+  // field out of the box; users can disable any one independently (the most
+  // common ask is autocapitalize, which mangles nicks and commands).
+  {
+    key: 'input.spellcheck',
+    category: 'input',
+    group: 'system_features',
+    type: 'bool',
+    default: true,
+    description:
+      'Enable the browser/OS spellchecker on the chat input (red squigglies under ' +
+      "misspellings). Disable if you frequently type words your dictionary doesn't " +
+      'know and find the underlines distracting.',
+  },
+  {
+    key: 'input.autocorrect',
+    category: 'input',
+    group: 'system_features',
+    type: 'bool',
+    default: true,
+    description:
+      'Allow the browser/OS to silently correct what you type as you go (most ' +
+      'visible on Safari and mobile keyboards). Disable to keep chat slang, ' +
+      'URLs, and command arguments exactly as typed. Also suppresses the ' +
+      'sentence-start auto-capitalize behavior, which Safari otherwise re-applies ' +
+      'regardless of any autocapitalize attribute.',
+  },
+
   // ─── System / locale ──────────────────────────────────────────────────
   {
     key: 'system.timezone',

@@ -26,6 +26,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
+import { buildNickCandidates } from '../utils/nickCompletion.js';
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -40,40 +41,11 @@ const emit = defineEmits(['select', 'close']);
 const panelEl = ref(null);
 const panelBottom = ref(8);
 
-const rows = computed(() => {
-  const buf = props.buffer;
-  if (!buf) return [];
-  const lower = (props.query || '').toLowerCase();
-  const seen = new Set();
-  // Pre-seed with our own nick so the speakers map (defense against pre-fix
-  // stale state) and the members list (which always contains us) skip it.
-  if (props.selfNick) seen.add(props.selfNick.toLowerCase());
-  const out = [];
-
-  const speakers = Object.values(buf.speakers || {})
-    .sort((a, b) => b.lastTime - a.lastTime);
-  for (const s of speakers) {
-    const lc = s.nick.toLowerCase();
-    if (seen.has(lc)) continue;
-    if (!lc.startsWith(lower)) continue;
-    seen.add(lc);
-    out.push({ nick: s.nick, lc, recent: true });
-  }
-
-  const memberNames = (buf.members || [])
-    .map((m) => (typeof m === 'string' ? m : m.nick))
-    .filter(Boolean)
-    .sort((a, b) => a.localeCompare(b));
-  for (const n of memberNames) {
-    const lc = n.toLowerCase();
-    if (seen.has(lc)) continue;
-    if (!lc.startsWith(lower)) continue;
-    seen.add(lc);
-    out.push({ nick: n, lc, recent: false });
-  }
-
-  return out.slice(0, 50);
-});
+const rows = computed(() =>
+  buildNickCandidates(props.buffer, props.selfNick, props.query)
+    .slice(0, 50)
+    .map((c) => ({ nick: c.nick, lc: c.nick.toLowerCase(), recent: c.recent }))
+);
 
 function pick(nick) {
   emit('select', nick);
