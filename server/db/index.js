@@ -305,6 +305,22 @@ function migrate() {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       FOREIGN KEY (network_id) REFERENCES networks(id) ON DELETE CASCADE
     );
+
+    -- Per-(user, network, channel) notification settings. Today only the
+    -- always_notify flag lives here ("treat every message in this channel
+    -- like a highlight for push/toast purposes"); future per-channel notify
+    -- prefs (mute, sound override, etc.) can be added as columns. Absent a
+    -- row, all flags default to 0.
+    CREATE TABLE IF NOT EXISTS channel_notify_settings (
+      user_id INTEGER NOT NULL,
+      network_id INTEGER NOT NULL,
+      target TEXT NOT NULL,
+      notify_always INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (user_id, network_id, target),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (network_id) REFERENCES networks(id) ON DELETE CASCADE
+    );
   `);
 }
 
@@ -387,7 +403,7 @@ ensureColumn('messages', 'alt', 'INTEGER NOT NULL DEFAULT 0');
 // Schema versioning lets us retire one-shot recovery blocks once every
 // production DB has run through them. Bump SCHEMA_VERSION when adding a new
 // recovery block, and delete blocks for versions far enough in the past.
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 const schemaVersionRow = db
   .prepare(`SELECT value FROM app_meta WHERE key = 'schema_version'`)
   .get();
@@ -539,6 +555,31 @@ if (schemaVersion < 3) {
   // index entry to remove — skipping NULL rows here would desync an
   // external-content FTS5 table and risk index corruption on later deletes.
   db.exec(`INSERT INTO messages_fts(rowid, text) SELECT id, text FROM messages`);
+}
+
+if (schemaVersion < 4) {
+  // Rename the existing in-client toast setting key to a unified-intent name.
+  // The old key gated only the in-client toast while push fired implicitly,
+  // so it was misleading. The new key governs the user's intent ("notify me
+  // about highlights") and the existing visibility gate picks toast vs push.
+  // Migration is value-preserving: read old → write new → drop old, per user.
+  const oldKey = 'notifications.highlight.toast.enabled';
+  const newKey = 'notifications.highlight.enabled';
+  const oldRows = db
+    .prepare(`SELECT user_id, value FROM user_settings WHERE key = ?`)
+    .all(oldKey);
+  const renameKey = db.transaction((rows) => {
+    const upsert = db.prepare(`
+      INSERT INTO user_settings (user_id, key, value, updated_at)
+      VALUES (?, ?, ?, datetime('now'))
+      ON CONFLICT (user_id, key) DO UPDATE SET
+        value = excluded.value,
+        updated_at = excluded.updated_at
+    `);
+    for (const row of rows) upsert.run(row.user_id, newKey, row.value);
+    db.prepare(`DELETE FROM user_settings WHERE key = ?`).run(oldKey);
+  });
+  renameKey(oldRows);
 }
 
 if (schemaVersion < SCHEMA_VERSION) {

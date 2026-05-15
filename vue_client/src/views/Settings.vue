@@ -145,65 +145,95 @@
           </div>
 
           <hr class="hl-sep" />
-          <h3 class="subhead">in-client alerts</h3>
+          <h3 class="subhead">notifications</h3>
           <p class="section-desc">
-            Toast and sound that fire in this tab when a rule above matches.
-            Push notifications cover the case where no Lurker tab is visible.
+            One master toggle per signal type. Toast appears in-client when a
+            tab is visible; push fires when no tab is visible — the right one is
+            picked automatically, so a single switch covers both.
           </p>
-          <div class="hl-notif">
-            <label class="hl-row">
-              <input
-                type="checkbox"
-                :checked="settings.effective('notifications.highlight.toast.enabled')"
-                @change="onCommit('notifications.highlight.toast.enabled', $event.target.checked)"
-              />
-              <span>show toast in the corner</span>
-            </label>
+
+          <div
+            v-for="signal in notificationSignals"
+            :key="signal.key"
+            class="hl-notif notif-signal"
+          >
+            <h4 class="notif-signal-title">{{ signal.title }}</h4>
+            <p class="section-desc small">{{ signal.help }}</p>
 
             <label class="hl-row">
               <input
                 type="checkbox"
-                :checked="settings.effective('notifications.highlight.sound.enabled')"
-                @change="onCommit('notifications.highlight.sound.enabled', $event.target.checked)"
+                :checked="signal.enabled"
+                @change="onCommit(`notifications.${signal.key}.enabled`, $event.target.checked)"
+              />
+              <span>notify me</span>
+            </label>
+
+            <label class="hl-row" :class="{ 'hl-row--dim': !signal.enabled }">
+              <input
+                type="checkbox"
+                :disabled="!signal.enabled"
+                :checked="settings.effective(`notifications.${signal.key}.sound.enabled`)"
+                @change="onCommit(`notifications.${signal.key}.sound.enabled`, $event.target.checked)"
               />
               <span>play a sound</span>
             </label>
 
-            <div class="hl-row" :class="{ 'hl-row--dim': !soundEnabled }">
+            <div class="hl-row" :class="{ 'hl-row--dim': !signal.soundEnabled }">
               <span class="hl-label">sound</span>
               <select
-                :value="settings.effective('notifications.highlight.sound.choice')"
-                :disabled="!soundEnabled"
-                @change="onCommit('notifications.highlight.sound.choice', $event.target.value)"
+                :value="settings.effective(`notifications.${signal.key}.sound.choice`)"
+                :disabled="!signal.soundEnabled"
+                @change="onCommit(`notifications.${signal.key}.sound.choice`, $event.target.value)"
               >
-                <option
-                  v-for="c in soundChoices"
-                  :key="c"
-                  :value="c"
-                >{{ c }}</option>
+                <option v-for="c in soundChoices" :key="c" :value="c">{{ c }}</option>
               </select>
               <button
                 class="link"
-                :disabled="!soundEnabled"
-                @click="onPreviewSound"
+                :disabled="!signal.soundEnabled"
+                @click="onPreviewSound(signal.key)"
               >preview</button>
             </div>
 
-            <div class="hl-row" :class="{ 'hl-row--dim': !soundEnabled }">
+            <div class="hl-row" :class="{ 'hl-row--dim': !signal.soundEnabled }">
               <span class="hl-label">volume</span>
               <input
                 type="range"
                 min="0"
                 max="100"
                 step="1"
-                :value="settings.effective('notifications.highlight.sound.volume')"
-                :disabled="!soundEnabled"
-                @input="onVolumeInput($event.target.value)"
-                @change="onCommit('notifications.highlight.sound.volume', Number($event.target.value))"
+                :value="settings.effective(`notifications.${signal.key}.sound.volume`)"
+                :disabled="!signal.soundEnabled"
+                @input="onVolumeInput(signal.key, $event.target.value)"
+                @change="onCommit(`notifications.${signal.key}.sound.volume`, Number($event.target.value))"
               />
-              <span class="hl-vol-num">{{ settings.effective('notifications.highlight.sound.volume') }}</span>
+              <span class="hl-vol-num">{{ settings.effective(`notifications.${signal.key}.sound.volume`) }}</span>
             </div>
           </div>
+
+          <hr class="hl-sep" />
+          <h3 class="subhead">always-notify channels</h3>
+          <p class="section-desc">
+            Channels flagged "always notify" via the channel context menu fire
+            notifications for every message. This is the one place to see and
+            remove the set.
+          </p>
+          <p v-if="!alwaysNotifyChannelList.length" class="muted small">
+            None yet. Right-click a channel in the buffer list to enable.
+          </p>
+          <ul v-else class="device-list">
+            <li
+              v-for="entry in alwaysNotifyChannelList"
+              :key="entry.key"
+              class="device"
+            >
+              <span class="ua">{{ entry.networkName }} · {{ entry.target }}</span>
+              <button
+                class="link danger"
+                @click="removeAlwaysNotify(entry.networkId, entry.target)"
+              >stop</button>
+            </li>
+          </ul>
         </section>
 
         <!-- ─── Away / Chat / Appearance (registry-driven) ────────────── -->
@@ -491,8 +521,10 @@ import {
   disable as disablePush,
   getCurrentEndpoint,
 } from '../composables/usePush.js';
-import { playHighlightSound } from '../composables/useHighlightNotifier.js';
+import { playSound } from '../composables/useHighlightNotifier.js';
 import { getOption } from '../utils/settingsRegistry.js';
+import { useChannelNotifyStore } from '../stores/channelNotify.js';
+import { useNetworksStore } from '../stores/networks.js';
 
 useSocket();
 
@@ -558,18 +590,74 @@ const otherSubscriptions = computed(() =>
   pushSubsStore.subscriptions.filter((s) => s.endpoint !== currentEndpoint.value)
 );
 
+// Sound choice list is the same enum across all signal types — read off any
+// one of the keys (they share a `choices` array in the registry).
 const soundChoices = computed(() => getOption('notifications.highlight.sound.choice')?.choices || []);
-const soundEnabled = computed(() => !!settings.effective('notifications.highlight.sound.enabled'));
 
-function onPreviewSound() {
-  playHighlightSound();
+// The three notification signal types, mirroring the unified-intent model on
+// the server: each is a single "notify me" toggle with an optional sound
+// sub-toggle. Toast vs push is auto-picked by the server's presence gate, so
+// users don't see it as a separate setting.
+const NOTIFICATION_SIGNALS = [
+  {
+    key: 'highlight',
+    title: 'Highlights',
+    help: 'When a message matches one of your highlight rules above.',
+  },
+  {
+    key: 'dm',
+    title: 'Direct messages',
+    help: 'When someone sends you a DM.',
+  },
+  {
+    key: 'always_notify',
+    title: 'Always-notify channels',
+    help: 'For every message in channels you have flagged via the channel context menu.',
+  },
+];
+
+const notificationSignals = computed(() => NOTIFICATION_SIGNALS.map((s) => {
+  const enabled = !!settings.effective(`notifications.${s.key}.enabled`);
+  const soundEnabled = enabled && !!settings.effective(`notifications.${s.key}.sound.enabled`);
+  return { ...s, enabled, soundEnabled };
+}));
+
+function onPreviewSound(kindKey) {
+  const choice = settings.effective(`notifications.${kindKey}.sound.choice`) || 'ping';
+  const volume = settings.effective(`notifications.${kindKey}.sound.volume`);
+  playSound(choice, volume);
 }
 
 // Live-update volume on drag without spamming the server: the range input's
 // `input` event tweaks the local optimistic value, and `change` commits.
-function onVolumeInput(raw) {
+function onVolumeInput(kindKey, raw) {
   const n = Number(raw);
-  if (Number.isFinite(n)) settings.values = { ...settings.values, 'notifications.highlight.sound.volume': n };
+  if (Number.isFinite(n)) {
+    settings.values = { ...settings.values, [`notifications.${kindKey}.sound.volume`]: n };
+  }
+}
+
+const channelNotify = useChannelNotifyStore();
+const networksStore = useNetworksStore();
+
+// Audit list of every channel currently flagged always-notify, grouped by
+// network and sorted for stable rendering. Offsets the lack of an inline
+// bell badge in BufferList — this is where users come to see/remove the set.
+const alwaysNotifyChannelList = computed(() => {
+  return channelNotify.alwaysNotifyChannels
+    .map((entry) => ({
+      ...entry,
+      key: `${entry.networkId}::${entry.target}`,
+      networkName: networksStore.networkById(entry.networkId)?.name || `net:${entry.networkId}`,
+    }))
+    .sort((a, b) =>
+      a.networkName.localeCompare(b.networkName)
+      || a.target.localeCompare(b.target),
+    );
+});
+
+function removeAlwaysNotify(networkId, target) {
+  channelNotify.setNotifyAlways(networkId, target, false);
 }
 
 async function refreshPushState() {
@@ -1215,6 +1303,21 @@ async function onResetAll() {
   font-variant-numeric: tabular-nums;
   min-width: 2.5em;
   text-align: right;
+}
+/* Each of the three signal types (highlight / dm / always-notify) is its own
+   block within the notifications subsection — separated by a thin rule so the
+   master/sound/choice/volume rows visually group under their kind. */
+.notif-signal + .notif-signal {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border);
+}
+.notif-signal-title {
+  margin: 0 0 4px;
+  font-size: 0.92em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg);
 }
 
 /* ── Compact single-line row (devices, passkeys, users, invites) ── */

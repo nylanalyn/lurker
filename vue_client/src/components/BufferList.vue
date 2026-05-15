@@ -88,6 +88,7 @@ import draggable from 'vuedraggable';
 import { useNetworksStore } from '../stores/networks.js';
 import { useBuffersStore } from '../stores/buffers.js';
 import { usePinsStore } from '../stores/pins.js';
+import { useChannelNotifyStore } from '../stores/channelNotify.js';
 import { useNickColors } from '../composables/useNickColors.js';
 import { useContextMenu } from '../composables/useContextMenu.js';
 import { isPeerOffline as derivePeerOffline, isPeerAway as derivePeerAway } from '../utils/peerPresence.js';
@@ -95,6 +96,7 @@ import { isPeerOffline as derivePeerOffline, isPeerAway as derivePeerAway } from
 const networks = useNetworksStore();
 const buffers = useBuffersStore();
 const pins = usePinsStore();
+const channelNotify = useChannelNotifyStore();
 const nicks = useNickColors();
 const menu = useContextMenu();
 
@@ -214,15 +216,31 @@ function onPinDragEnd(networkId) {
 function onBufferContextMenu(e, buf) {
   if (isServerBuffer(buf)) return;
   const pinned = pins.isPinned(buf.networkId, buf.target);
-  menu.open(
-    [
-      pinned
-        ? { label: 'Unpin', icon: 'fa-solid fa-thumbtack-slash', onClick: () => pins.unpin(buf.networkId, buf.target) }
-        : { label: 'Pin', icon: 'fa-solid fa-thumbtack', onClick: () => pins.pin(buf.networkId, buf.target) },
-    ],
-    e.clientX,
-    e.clientY,
-  );
+  const items = [
+    pinned
+      ? { label: 'Unpin', icon: 'fa-solid fa-thumbtack-slash', onClick: () => pins.unpin(buf.networkId, buf.target) }
+      : { label: 'Pin', icon: 'fa-solid fa-thumbtack', onClick: () => pins.pin(buf.networkId, buf.target) },
+  ];
+  // Always-notify is a channel-level concept (DMs are blanket-controlled by
+  // the global DM notification setting). Server buffers are filtered out at
+  // the top of this handler.
+  if (buf.target.startsWith('#')) {
+    const isAlwaysNotify = channelNotify.notifyAlways(buf.networkId, buf.target);
+    items.push(
+      isAlwaysNotify
+        ? {
+            label: 'Stop always notifying',
+            icon: 'fa-solid fa-bell-slash',
+            onClick: () => channelNotify.setNotifyAlways(buf.networkId, buf.target, false),
+          }
+        : {
+            label: 'Always notify',
+            icon: 'fa-solid fa-bell',
+            onClick: () => channelNotify.setNotifyAlways(buf.networkId, buf.target, true),
+          },
+    );
+  }
+  menu.open(items, e.clientX, e.clientY);
 }
 
 function rowClasses(buf, networkId) {

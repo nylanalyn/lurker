@@ -26,6 +26,10 @@ import {
   listPinnedForUserNetwork,
 } from '../db/pinnedBuffers.js';
 import { setNicklistCollapsed } from '../db/nicklistCollapsed.js';
+import {
+  getChannelNotifyAlways,
+  setChannelNotifyAlways,
+} from '../db/channelNotify.js';
 import { upsertChannel, ownsNetwork } from '../db/networks.js';
 import * as chanlistDb from '../db/chanlist.js';
 import { getUserSettings } from '../db/settings.js';
@@ -106,15 +110,24 @@ function isDirect(event) {
 // Match state is persisted on each message at insert time (see
 // ircConnection.publish), so events already arrive with matched/matchedRuleId
 // populated — either from the live IRC pipeline or from rowToEvent for
-// backlog reads. This decoration only adds the per-broadcast `dm` flag and
-// normalizes the match fields so non-persisted events (typing, names, etc.)
-// don't surface as undefined.
+// backlog reads. This decoration adds the per-broadcast `dm` and
+// `notifyAlways` content signals and the derived `notify` delivery decision,
+// and normalizes the match fields so non-persisted events (typing, names,
+// etc.) don't surface as undefined. Content signals stay separate on the
+// wire so clients can route toast/sound per signal type; `notify` is the
+// union and is the single gate consulted by push delivery and the in-client
+// notifier.
 function decorateMessage(userId, event) {
   if (!event || typeof event !== 'object') return event;
   const matched = !!event.matched;
   const matchedRuleId = event.matchedRuleId ?? null;
   const dm = isDirect(event) && !event.self;
-  return { ...event, matched, matchedRuleId, dm };
+  const target = event.target || '';
+  const isChannel = target.startsWith('#');
+  const notifyAlways = isChannel && !event.self
+    && getChannelNotifyAlways(userId, event.networkId, target);
+  const notify = matched || dm || notifyAlways;
+  return { ...event, matched, matchedRuleId, dm, notifyAlways, notify };
 }
 
 function computeUnreadFor(userId, networkId, target, lastReadId) {
@@ -242,12 +255,22 @@ export function attachWsHub(httpServer, sessionSecret) {
   }
 
   function maybePush(userId, decorated) {
-    if (!decorated || (!decorated.matched && !decorated.dm)) return;
+    if (!decorated || !decorated.notify) return;
     if (decorated.self) return;
     if (userHasVisibleClient(userId)) return;
+    // Signal kind in priority order: DM beats matched beats always_notify.
+    // The `kind` doubles as the settings-key namespace, so picking a single
+    // priority winner here means a DM that also matched a rule still
+    // delivers as one notification, gated by the DM master toggle.
+    const kindKey = decorated.dm
+      ? 'dm'
+      : decorated.matched
+        ? 'highlight'
+        : 'always_notify';
+    if (!effectiveSetting(userId, `notifications.${kindKey}.enabled`)) return;
     const network = ircManager.getConnection(userId, decorated.networkId)?.network;
     pushService.deliver(userId, {
-      kind: decorated.dm ? 'dm' : 'highlight',
+      kind: kindKey,
       networkId: decorated.networkId,
       networkName: network?.name || `net:${decorated.networkId}`,
       target: decorated.target,
@@ -708,6 +731,22 @@ export function attachWsHub(httpServer, sessionSecret) {
         const collapsed = !!msg.collapsed;
         setNicklistCollapsed(userId, networkId, target, collapsed);
         fanOut(userId, { kind: 'nicklist-collapsed-changed', networkId, target, collapsed });
+        break;
+      }
+      case 'set-channel-notify-always': {
+        const networkId = Number(msg.networkId);
+        const target = typeof msg.target === 'string' ? msg.target : '';
+        // Always-notify is a channel-level concept. DMs are blanket-controlled
+        // by notifications.dm.enabled; server pseudo-buffers can't carry it.
+        if (!networkId || !target.startsWith('#')) break;
+        const notifyAlways = !!msg.notifyAlways;
+        setChannelNotifyAlways(userId, networkId, target, notifyAlways);
+        fanOut(userId, {
+          kind: 'channel-notify-changed',
+          networkId,
+          target,
+          notifyAlways,
+        });
         break;
       }
       case 'history': {

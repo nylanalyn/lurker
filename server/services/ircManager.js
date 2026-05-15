@@ -8,6 +8,7 @@ import { reopenBuffer } from '../db/closedBuffers.js';
 import { getUserAwayState, writeAwayMarker, writeBackMarker } from '../db/userAwayState.js';
 import { listPinnedForUser } from '../db/pinnedBuffers.js';
 import { listCollapsedForUser } from '../db/nicklistCollapsed.js';
+import { listChannelNotifyForUser } from '../db/channelNotify.js';
 import { splitSay, splitAction } from './messageSplit.js';
 import db from '../db/index.js';
 
@@ -275,11 +276,13 @@ class IrcManager extends EventEmitter {
   snapshotForUser(userId) {
     const pinsByNetwork = listPinnedForUser(userId);
     const collapsedByNetwork = listCollapsedForUser(userId);
+    const notifyByNetwork = listChannelNotifyForUser(userId);
     return this.listConnections(userId).map((conn) => {
       const snap = conn.snapshot();
       const pinned = pinsByNetwork.get(snap.networkId) || [];
       const collapsedNicklists = collapsedByNetwork.get(snap.networkId) || {};
-      return { ...snap, pinned, collapsedNicklists };
+      const channelNotify = notifyByNetwork.get(snap.networkId) || {};
+      return { ...snap, pinned, collapsedNicklists, channelNotify };
     });
   }
 }

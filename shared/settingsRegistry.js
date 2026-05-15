@@ -580,19 +580,22 @@ export const REGISTRY = Object.freeze([
       'web.auth.api_keys in its config.json.',
   },
 
-  // ─── In-client highlight notifications ────────────────────────────────
-  // Push notifications cover the case where no client is visible. These
-  // settings drive the in-client toast + sound that fire while you ARE
-  // looking at Lurker, so an arriving highlight is impossible to miss.
+  // ─── Notifications (unified intent, per signal type) ──────────────────
+  // Toast (in-client when a tab is visible) and push (when no tab is visible)
+  // are two delivery sides of the *same* intent. wsHub's userHasVisibleClient
+  // gate routes the right one automatically. So each signal type has a single
+  // master `enabled` toggle that governs both, plus a sound sub-toggle that
+  // only matters when the master is on.
   {
-    key: 'notifications.highlight.toast.enabled',
+    key: 'notifications.highlight.enabled',
     category: 'highlights',
     group: 'alerts',
     type: 'bool',
     default: true,
     description:
-      'Show a corner toast when a new highlight arrives, even while a Lurker ' +
-      'tab is visible (push notifications already cover the hidden-tab case).',
+      'Notify me when a message matches one of my highlight rules. Toast appears ' +
+      'in-client when a tab is visible; push fires when no tab is visible. Turning ' +
+      'this off suppresses both.',
   },
   {
     key: 'notifications.highlight.sound.enabled',
@@ -601,8 +604,8 @@ export const REGISTRY = Object.freeze([
     type: 'bool',
     default: false,
     description:
-      'Play a short sound when a new highlight arrives in a buffer you are ' +
-      'not currently looking at. Off by default — opt in if you want it.',
+      'Play a short sound when a new highlight arrives. Off by default — opt in ' +
+      'if you want it. Dependent on notifications.highlight.enabled.',
   },
   {
     key: 'notifications.highlight.sound.choice',
@@ -612,8 +615,8 @@ export const REGISTRY = Object.freeze([
     choices: ['ping', 'chime', 'pop', 'beep', 'knock', 'plink'],
     default: 'ping',
     description:
-      'Which bundled sound to play. Files live in /sounds/<choice>.mp3 on ' +
-      'the client. Use the preview button in Settings to audition each one.',
+      'Which bundled sound to play for highlights. Files live in /sounds/<choice>.mp3 ' +
+      'on the client. Use the preview button in Settings to audition each one.',
   },
   {
     key: 'notifications.highlight.sound.volume',
@@ -624,6 +627,91 @@ export const REGISTRY = Object.freeze([
     max: 100,
     default: 60,
     description: 'Playback volume for the highlight sound, 0–100.',
+  },
+
+  {
+    key: 'notifications.dm.enabled',
+    category: 'highlights',
+    group: 'alerts',
+    type: 'bool',
+    default: true,
+    description:
+      'Notify me when someone sends me a direct message. Toast in-client when a ' +
+      'tab is visible; push when none is. Master toggle for DM notifications.',
+  },
+  {
+    key: 'notifications.dm.sound.enabled',
+    category: 'highlights',
+    group: 'alerts',
+    type: 'bool',
+    default: false,
+    description:
+      'Play a short sound on incoming DMs. Off by default. Dependent on ' +
+      'notifications.dm.enabled.',
+  },
+  {
+    key: 'notifications.dm.sound.choice',
+    category: 'highlights',
+    group: 'alerts',
+    type: 'enum',
+    choices: ['ping', 'chime', 'pop', 'beep', 'knock', 'plink'],
+    default: 'chime',
+    description:
+      'Which bundled sound to play for DMs. Audibly distinct default from the ' +
+      'highlight sound so you can tell them apart by ear.',
+  },
+  {
+    key: 'notifications.dm.sound.volume',
+    category: 'highlights',
+    group: 'alerts',
+    type: 'int',
+    min: 0,
+    max: 100,
+    default: 60,
+    description: 'Playback volume for the DM sound, 0–100.',
+  },
+
+  {
+    key: 'notifications.always_notify.enabled',
+    category: 'highlights',
+    group: 'alerts',
+    type: 'bool',
+    default: true,
+    description:
+      'Notify me for every message in channels I have flagged "always notify" ' +
+      '(via the channel context menu). Toast in-client, push when no tab is ' +
+      'visible. The per-channel bell is the opt-in; this is the global master.',
+  },
+  {
+    key: 'notifications.always_notify.sound.enabled',
+    category: 'highlights',
+    group: 'alerts',
+    type: 'bool',
+    default: true,
+    description:
+      'Play a short sound for messages in always-notify channels. Dependent on ' +
+      'notifications.always_notify.enabled.',
+  },
+  {
+    key: 'notifications.always_notify.sound.choice',
+    category: 'highlights',
+    group: 'alerts',
+    type: 'enum',
+    choices: ['ping', 'chime', 'pop', 'beep', 'knock', 'plink'],
+    default: 'plink',
+    description:
+      'Which bundled sound to play for always-notify channels. Defaults to a ' +
+      'quieter/subtler choice since these channels can be higher-traffic.',
+  },
+  {
+    key: 'notifications.always_notify.sound.volume',
+    category: 'highlights',
+    group: 'alerts',
+    type: 'int',
+    min: 0,
+    max: 100,
+    default: 60,
+    description: 'Playback volume for the always-notify sound, 0–100.',
   },
 
   // ─── System / locale ──────────────────────────────────────────────────

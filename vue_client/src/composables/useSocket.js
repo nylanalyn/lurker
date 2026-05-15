@@ -12,7 +12,8 @@ import { useChanlistStore } from '../stores/chanlist.js';
 import { useSearchStore } from '../stores/search.js';
 import { usePinsStore } from '../stores/pins.js';
 import { useNicklistCollapseStore } from '../stores/nicklistCollapse.js';
-import { notifyHighlight } from './useHighlightNotifier.js';
+import { useChannelNotifyStore } from '../stores/channelNotify.js';
+import { notifyForEvent } from './useHighlightNotifier.js';
 
 let socket = null;
 const connected = ref(false);
@@ -79,12 +80,12 @@ function applyEvent(event) {
       }
       // Skipped on dedupe (above), so replayed events from a resume gap
       // can't re-fire a toast or sound for highlights we've already seen.
-      notifyHighlight(event);
+      notifyForEvent(event);
       break;
     }
     case 'notice':
       if (!buffers.pushMessage(event)) break;
-      notifyHighlight(event);
+      notifyForEvent(event);
       break;
     // For events that carry an id AND mutate buffer state (member list,
     // topic), run the dedupe in pushMessage first. On a replay the mutation
@@ -180,9 +181,11 @@ function applySnapshot(snapshot) {
   const buffers = useBuffersStore();
   const pins = usePinsStore();
   const nicklistCollapse = useNicklistCollapseStore();
+  const channelNotify = useChannelNotifyStore();
   networks.applySnapshot(snapshot);
   pins.applySnapshot(snapshot);
   nicklistCollapse.applySnapshot(snapshot);
+  channelNotify.applySnapshot(snapshot);
   for (const net of snapshot) {
     for (const ch of net.channels) {
       // Snapshot members are already { nick, modes } objects from the server.
@@ -300,6 +303,11 @@ function handleMessage(raw) {
   if (payload.kind === 'nicklist-collapsed-changed') {
     const nicklistCollapse = useNicklistCollapseStore();
     nicklistCollapse.applyChange(payload.networkId, payload.target, !!payload.collapsed);
+    return;
+  }
+  if (payload.kind === 'channel-notify-changed') {
+    const channelNotify = useChannelNotifyStore();
+    channelNotify.applyChange(payload.networkId, payload.target, !!payload.notifyAlways);
     return;
   }
   if (payload.kind === 'buffer-reopened') {
