@@ -7,7 +7,6 @@
   <div v-if="active" class="status-bar" :class="{ compact }">
     <span class="seg clock">{{ clock }}</span>
     <span class="seg buffer"><template v-if="targetLabel"><span v-if="networkLabel && !compact" class="net">{{ networkLabel }}/</span><span class="name">{{ targetLabel }}</span></template><span v-else class="name">{{ networkLabel }}</span><span v-if="modeSuffix && !compact" class="modes">{{ modeSuffix }}</span></span>
-    <span v-if="memberCount != null && !compact" class="seg count"><span class="num">{{ memberCount }}</span> {{ memberCount === 1 ? 'user' : 'users' }}</span>
     <span v-if="peerStatusLabel" class="seg peer-status" :class="peerStatusClass">{{ peerStatusLabel }}</span>
     <span v-if="lagLabel && !compact" class="seg lag" :class="lagClass">{{ lagLabel }}</span>
     <span v-if="uploadLabel" class="seg upload" :class="{ failed: uploads.failedAt }">{{ uploadLabel }}</span>
@@ -30,8 +29,8 @@ import { formatTimestamp } from '../utils/timestamp.js';
 import { isPeerOffline, isPeerAway } from '../utils/peerPresence.js';
 
 defineProps({
-  // Mobile/petite mode: hide the network prefix, mode suffix, member count,
-  // lag, and "new ↓" jump button. Leaves clock | buffer | typing — what fits
+  // Mobile/petite mode: hide the network prefix, mode suffix, lag, and
+  // "new ↓" jump button. Leaves clock | buffer | typing — what fits
   // legibly on a phone width.
   compact: { type: Boolean, default: false },
 });
@@ -90,11 +89,6 @@ const modeSuffix = computed(() => {
   if (!isChannel.value) return '';
   const m = buffer.value?.modes;
   return m ? `(+${m})` : '';
-});
-
-const memberCount = computed(() => {
-  if (!isChannel.value) return null;
-  return buffer.value?.members?.length ?? null;
 });
 
 // DM-only persistent peer state. Surfaces "<nick> is offline" when the server
@@ -230,8 +224,6 @@ function onJumpToBottom() {
 .seg.buffer .name { color: var(--accent); }
 .seg.buffer .net { color: var(--fg-muted); }
 .seg.buffer .modes { color: var(--fg-muted); }
-.seg.count { color: var(--fg-muted); }
-.seg.count .num { color: var(--accent); }
 .seg.lag { color: var(--fg-muted); }
 .seg.lag.warn { color: var(--warn); }
 .seg.lag.alarm { color: var(--bad); }

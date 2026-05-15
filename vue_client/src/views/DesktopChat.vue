@@ -57,6 +57,11 @@
           @click="showTopic = true"
         ><LinkedText :text="topic" /></button>
       </template>
+      <span
+        v-if="isChannel && memberCount != null"
+        class="member-count"
+        :title="`${memberCount} ${memberCount === 1 ? 'user' : 'users'} in channel`"
+      >{{ memberCount }}</span>
       <button
         v-if="isChannel"
         class="link members-toggle"
@@ -139,7 +144,7 @@ import { useNicklistCollapseStore } from '../stores/nicklistCollapse.js';
 
 const buffers = useBuffersStore();
 const { connected } = useSocket();
-const { active, topic, isServerBuffer, isChannel, bufferLabel } = useActiveBuffer();
+const { active, activeBuf, topic, isServerBuffer, isChannel, bufferLabel } = useActiveBuffer();
 const settings = useSettingsStore();
 const toasts = useToastsStore();
 const nicklistCollapse = useNicklistCollapseStore();
@@ -174,6 +179,14 @@ useKeyboardShortcuts({
 });
 
 const showChannels = computed(() => settings.effective('look.layout.show_channel_list'));
+
+// User count for the active channel buffer. Sits in the topic bar (next to
+// the members-toggle button) rather than the status bar — the count is a
+// property of the channel, so the channel header is the natural home.
+const memberCount = computed(() => {
+  if (!isChannel.value) return null;
+  return activeBuf.value?.members?.length ?? null;
+});
 
 // Per-channel nicklist visibility. A channel the user has explicitly toggled
 // carries an override (true = collapsed); otherwise the global
@@ -380,6 +393,13 @@ useChatBootstrap({ onJump: onJumpToMessage });
 
 /* Pin the members toggle to the far right of the topic bar regardless of
    what's between it and the buffer label. The topic text shrinks first
-   (it has min-width: 0 + ellipsis) so the toggle stays put. */
+   (it has min-width: 0 + ellipsis) so the toggle stays put. The member
+   count rides along just to the left of the toggle. */
+.topic .member-count {
+  margin-left: auto;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+.topic .member-count + .members-toggle { margin-left: 0; padding-left: 8px; }
 .topic .members-toggle { margin-left: auto; padding-left: 8px; }
 </style>
