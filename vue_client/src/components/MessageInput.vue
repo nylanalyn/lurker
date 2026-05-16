@@ -8,15 +8,15 @@
     ref="formEl"
     class="input"
     :class="{ 'drag-over': dragOver }"
-    @submit.prevent="submit"
     @dragover.prevent="onDragOver"
     @dragleave.prevent="onDragLeave"
     @drop.prevent="onDrop"
   >
     <span class="prompt">{{ promptLabel }}<span v-if="awayLabel" class="away">&nbsp;{{ awayLabel }}</span>&nbsp;&gt;</span>
-    <input
+    <textarea
       ref="inputEl"
       v-model="text"
+      rows="1"
       :placeholder="placeholder"
       :disabled="!active"
       :spellcheck="systemFeatures.spellcheck"
@@ -25,7 +25,7 @@
       @keydown="onKeydown"
       @paste="onPaste"
       @blur="onBlur"
-    />
+    ></textarea>
     <input
       ref="fileInputEl"
       type="file"
@@ -63,7 +63,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onBeforeUnmount, onMounted } from 'vue';
+import { ref, computed, watch, onBeforeUnmount, onMounted, nextTick } from 'vue';
 import { useNetworksStore } from '../stores/networks.js';
 import { useBuffersStore } from '../stores/buffers.js';
 import { useInputHistoryStore } from '../stores/inputHistory.js';
@@ -288,6 +288,23 @@ function setInputAndCaretEnd(value) {
   });
 }
 
+// IRCCloud-style edge detection for history nav: Up at the first logical
+// line / Down at the last logical line walks history. Otherwise the arrow
+// is left alone so it can move the caret between lines within a multi-line
+// draft. "Logical line" = explicit \n in the text; visual wrapping is not
+// counted (a single long wrapped line still triggers history, which matches
+// IRCCloud's behavior).
+function atHistoryEdge(key) {
+  const el = inputEl.value;
+  if (!el) return true;
+  const value = text.value;
+  const caret = el.selectionStart ?? value.length;
+  if (key === 'ArrowUp') {
+    return !value.slice(0, caret).includes('\n');
+  }
+  return !value.slice(caret).includes('\n');
+}
+
 function handleHistoryNav(e) {
   if (!active.value) return;
   const { networkId, target } = active.value;
@@ -375,10 +392,27 @@ function onBlur() {
 }
 
 function onKeydown(e) {
+  if (e.key === 'Enter') {
+    // Textareas don't submit forms on Enter, so we trigger submission here.
+    // Shift+Enter falls through to the default newline insert. e.isComposing
+    // guards against IME users — pressing Enter to confirm a composition
+    // shouldn't fire a send. The fire-and-forget on submit() is intentional;
+    // it owns its own error handling and the sync handler shouldn't await.
+    if (e.isComposing) return;
+    if (e.shiftKey) return;
+    e.preventDefault();
+    submit();
+    return;
+  }
   if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
     // Bare arrows only — Alt+Arrow is buffer navigation (handled globally in
     // useKeyboardShortcuts), so don't hijack it for input history here.
     if (e.altKey || e.metaKey || e.ctrlKey) return;
+    // Multi-line textarea: only walk history at the logical-line edges, so
+    // arrows still move the caret between newline-separated lines within
+    // the draft. Up = at first logical line (no \n before caret).
+    // Down = at last logical line (no \n after caret).
+    if (!atHistoryEdge(e.key)) return;
     handleHistoryNav(e);
     return;
   }
@@ -582,10 +616,29 @@ function insertUrlAtCaret(url) {
   });
 }
 
+// Resize the textarea to fit its content up to the CSS max-height (16 rows).
+// The 'auto' → scrollHeight dance shrinks the box first so the second read
+// reflects the natural content height rather than a previously-grown box.
+function autoResize() {
+  const el = inputEl.value;
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = `${el.scrollHeight}px`;
+}
+
+// Watch the text computed so every change source — typing, paste, history
+// recall, URL insert, nick complete, buffer switch — resizes the box.
+// flush:'post' runs after Vue has propagated the new value to the DOM, so
+// scrollHeight reads the up-to-date content.
+watch(text, () => autoResize(), { flush: 'post' });
+
 let unsubInsert = null;
 onMounted(() => {
   unsubInsert = onInsertUrl(insertUrlAtCaret);
   if (typeof window !== 'undefined') window.addEventListener('pagehide', onPagehide);
+  // Initial size — covers the case where the user lands in a buffer whose
+  // draft is already multi-line (e.g. a pasted-but-not-sent log).
+  nextTick(autoResize);
 });
 
 function blobFromClipboardItem(item) {
@@ -1008,7 +1061,9 @@ function handleCommand(line, networkId, target) {
 <style scoped>
 .input {
   display: flex;
-  align-items: center;
+  /* flex-start so the prompt label and upload button stay pinned to the
+     first line as the textarea grows downward across multiple lines. */
+  align-items: flex-start;
   gap: 1ch;
   padding: 8px 12px;
 }
@@ -1020,6 +1075,9 @@ function handleCommand(line, networkId, target) {
   color: var(--accent);
   white-space: pre;
   user-select: none;
+  /* Matches the textarea's intrinsic single-row height so the prompt and
+     the first text line baseline-align before any growth. */
+  line-height: 1.4;
 }
 .prompt .away { color: var(--warn); }
 .upload-btn {
@@ -1029,25 +1087,34 @@ function handleCommand(line, networkId, target) {
   cursor: pointer;
   padding: 0 2px;
   font-size: inherit;
+  line-height: 1.4;
 }
 .upload-btn:hover:not(:disabled) { color: var(--accent); }
 .upload-btn:disabled { opacity: 0.4; cursor: default; }
 .file-hidden { display: none; }
-input {
+textarea {
   flex: 1;
   min-width: 0;
   background: transparent;
   border: none;
   padding: 0;
   color: var(--fg);
+  font: inherit;
+  line-height: 1.4;
+  resize: none;
+  overflow-y: auto;
+  /* JS auto-resize sets height = scrollHeight on every change; this clamp
+     caps the visible growth at 16 rows so very long paste-ins scroll
+     internally instead of pushing the message list off-screen. */
+  max-height: calc(1.4em * 16);
 }
-input:focus { outline: none; }
-input::placeholder { color: var(--fg-muted); font-style: italic; }
+textarea:focus { outline: none; }
+textarea::placeholder { color: var(--fg-muted); font-style: italic; }
 
 /* iOS Safari auto-zooms when focusing any input with computed font-size
    below 16px, and the global 14px would otherwise trigger it. Force 16px
    on mobile widths only — desktop keeps the denser typography. */
 @media (max-width: 768px) {
-  input { font-size: 16px; }
+  textarea { font-size: 16px; }
 }
 </style>
