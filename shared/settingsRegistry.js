@@ -791,6 +791,21 @@ export const REGISTRY = Object.freeze([
       'regardless of any autocapitalize attribute.',
   },
 
+  // ─── Input bar (autocomplete UI) ──────────────────────────────────────
+  {
+    key: 'input.suggestion_strip_on_desktop',
+    category: 'input',
+    group: 'autocomplete',
+    type: 'bool',
+    default: false,
+    description:
+      'Use the mobile-style horizontal suggestion strip on desktop instead of ' +
+      'the @-triggered popup menu. The strip surfaces matching nicks above the ' +
+      "input as you type any 2+ character prefix (no '@' required), tap or " +
+      'click a nick to insert it. Mobile uses the strip unconditionally; this ' +
+      'setting lets desktop users opt into the same behavior.',
+  },
+
   // ─── System / locale ──────────────────────────────────────────────────
   {
     key: 'system.timezone',

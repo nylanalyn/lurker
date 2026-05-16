@@ -7,10 +7,15 @@
 // speakers map (reverse-chronological) and `recent: false` marking remaining
 // channel members (alphabetical). The caller's own nick is excluded.
 //
-// Membership filter: when the buffer has a members list, speakers that are no
-// longer in the channel (parted/quit) are dropped, so completion only surfaces
-// people who can still see the message. DM buffers don't carry a members list,
-// so the filter is skipped there and the peer remains completable.
+// Membership filter: for channel buffers, speakers that are no longer present
+// (parted/quit) are dropped so completion only surfaces people who can still
+// see the message. DM buffers don't carry a members list — the filter is
+// skipped there so the peer remains completable.
+// We key the filter off the buffer being a channel (target starts with '#'),
+// not off whether the member list happens to be populated — during initial
+// load a channel can have an empty members list before NAMES arrives, and
+// using "is the set empty" as the proxy would leak parted speakers through
+// in that window.
 // Optional `isIgnored` predicate (passed `(nick, userhost)`) lets callers
 // strip ignored nicks from completion without this util reaching into Pinia
 // directly. Member userhost is computed from the member object when
@@ -26,7 +31,7 @@ export function buildNickCandidates(buf, selfNick, prefix, isIgnored) {
     .map((m) => (typeof m === 'string' ? m : m.nick))
     .filter(Boolean);
   const memberLcSet = new Set(memberNames.map((n) => n.toLowerCase()));
-  const filterSpeakersByMembership = memberLcSet.size > 0;
+  const filterSpeakersByMembership = !!buf.target?.startsWith('#');
   const memberByLc = new Map();
   for (const m of (buf.members || [])) {
     const nick = typeof m === 'string' ? m : m?.nick;

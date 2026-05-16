@@ -49,6 +49,13 @@
       @select="onPickerSelect"
       @close="closePicker"
     />
+    <NickSuggestionStrip
+      v-show="stripOpen"
+      :query="stripQuery"
+      :buffer="buffer"
+      :self-nick="ownNick"
+      @select="onStripSelect"
+    />
     <Teleport to="body">
       <LongMessageUploadModal
         v-if="longMessageModalOpen"
@@ -78,6 +85,7 @@ import { setComposingState } from '../composables/useComposing.js';
 import { chunkCountForSay, chunkCountForAction } from '../utils/messageSplit.js';
 import { buildNickCandidates } from '../utils/nickCompletion.js';
 import NickPicker from './NickPicker.vue';
+import NickSuggestionStrip from './NickSuggestionStrip.vue';
 import LongMessageUploadModal from './LongMessageUploadModal.vue';
 import { useSelfLabel } from '../composables/useSelfLabel.js';
 import { useViewport } from '../composables/useViewport.js';
@@ -98,6 +106,10 @@ const pickerOpen = ref(false);
 const pickerQuery = ref('');
 let pickerTokenStart = -1;
 let pickerTokenEnd = -1;
+const stripOpen = ref(false);
+const stripQuery = ref('');
+let stripTokenStart = -1;
+let stripTokenEnd = -1;
 
 const active = computed(() => networks.activeBuffer);
 
@@ -283,6 +295,7 @@ function handleHistoryNav(e) {
   e.preventDefault();
   resetCompletion();
   closePicker();
+  closeStrip();
 
   if (e.key === 'ArrowUp') {
     if (historyIndex === null) {
@@ -335,6 +348,11 @@ function applyCompletion() {
   if (!completion || !completion.matches.length) return;
   const pick = completion.matches[completion.index];
   const suffix = (completion.atLineStart && !completion.isChannel) ? ': ' : '';
+  // Tab-completion owns the input now; any open @-picker or mobile suggestion
+  // strip would be stale (cycling suppresses onInput → refreshPicker doesn't
+  // fire, so they wouldn't close on their own).
+  closePicker();
+  closeStrip();
   cycling = true;
   text.value = completion.prefix + pick + suffix + completion.tail;
   cycling = false;
@@ -435,12 +453,45 @@ function closePicker() {
   pickerTokenEnd = -1;
 }
 
+function closeStrip() {
+  stripOpen.value = false;
+  stripQuery.value = '';
+  stripTokenStart = -1;
+  stripTokenEnd = -1;
+}
+
 function refreshPicker() {
   const el = inputEl.value;
-  if (!el) { closePicker(); return; }
+  if (!el) { closePicker(); closeStrip(); return; }
   const value = text.value;
   const cursor = el.selectionStart ?? value.length;
   const { token, start, end } = tokenAtCursor(value, cursor);
+
+  // Slash commands never trigger nick completion in either UI.
+  if (token.startsWith('/')) { closePicker(); closeStrip(); return; }
+
+  // Desktop users can opt into the mobile-style strip via this setting;
+  // mobile always uses the strip regardless.
+  const useStrip = isMobile.value
+    || !!settings.effective('input.suggestion_strip_on_desktop');
+
+  if (useStrip) {
+    // Strip replaces the @-popup with an always-on suggestion row.
+    // Leading '@' is tolerated as muscle-memory but stripped from the query
+    // so the prefix matches plain typing. Min length 2 keeps the strip from
+    // flashing on every single-letter word.
+    const prefix = token.startsWith('@') ? token.slice(1) : token;
+    if (prefix.length >= 2) {
+      stripOpen.value = true;
+      stripQuery.value = prefix;
+      stripTokenStart = start;
+      stripTokenEnd = end;
+    } else {
+      closeStrip();
+    }
+    return;
+  }
+
   if (!token.startsWith('@')) {
     if (pickerOpen.value) closePicker();
     return;
@@ -464,6 +515,29 @@ function onPickerSelect(nick) {
     const el = inputEl.value;
     if (!el) return;
     const caret = before.length + nick.length + 1;
+    el.focus();
+    el.setSelectionRange(caret, caret);
+  });
+}
+
+function onStripSelect(nick) {
+  const value = text.value;
+  if (stripTokenStart < 0) { closeStrip(); return; }
+  const before = value.slice(0, stripTokenStart);
+  const after = value.slice(stripTokenEnd);
+  // Match Tab-completion's suffix rule (applyCompletion above): a nick at the
+  // start of a line is being addressed, so it gets ': '; mid-sentence gets a
+  // bare space. This is what the old @-menu was missing (task #198).
+  const atLineStart = /(^|\n)\s*$/.test(before);
+  const suffix = atLineStart ? ': ' : ' ';
+  cycling = true;
+  text.value = before + nick + suffix + after;
+  cycling = false;
+  closeStrip();
+  Promise.resolve().then(() => {
+    const el = inputEl.value;
+    if (!el) return;
+    const caret = before.length + nick.length + suffix.length;
     el.focus();
     el.setSelectionRange(caret, caret);
   });
@@ -523,6 +597,7 @@ function onInput() {
 watch(active, (newActive, oldActive) => {
   resetCompletion();
   closePicker();
+  closeStrip();
   resetHistoryNav();
   // A switch between buffers swaps the draft text via the `text` computed,
   // but any unused split-confirm token doesn't transfer — a fresh buffer is
@@ -702,6 +777,7 @@ function commitInput(raw, networkId, target) {
 async function submit() {
   resetCompletion();
   closePicker();
+  closeStrip();
   const raw = text.value;
   if (!raw.trim() || !active.value) return;
   const { networkId, target } = active.value;
@@ -1036,6 +1112,9 @@ function handleCommand(line, networkId, target) {
   align-items: flex-start;
   gap: 1ch;
   padding: 8px 12px;
+  /* Anchors the NickSuggestionStrip's `position: absolute; bottom: 100%`
+     so it floats just above this form, over the StatusBar. */
+  position: relative;
 }
 .input.drag-over {
   outline: 1px dashed var(--accent);
