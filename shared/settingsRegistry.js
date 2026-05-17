@@ -168,6 +168,23 @@ export const REGISTRY = Object.freeze([
 
   // ─── Per-line display collapsing (nick / timestamp dedupe) ────────────
   {
+    key: 'look.message.layout',
+    category: 'appearance',
+    group: 'messages',
+    type: 'enum',
+    choices: ['auto', 'standard', 'compact'],
+    default: 'auto',
+    description:
+      'How message rows are laid out. "auto" (default) uses the standard ' +
+      'three-column grid on desktop and the compact two-line layout on ' +
+      'mobile. "standard" forces the three-column grid everywhere. ' +
+      '"compact" forces the two-line layout (nick + time on top, body ' +
+      'below) everywhere — useful on low-resolution desktop displays ' +
+      'where the columns squeeze the body too far. In compact mode the ' +
+      'author and timestamp collapse settings below are effectively ' +
+      'forced on regardless of their stored value.',
+  },
+  {
     key: 'look.message.collapse_authors',
     category: 'appearance',
     group: 'messages',
@@ -364,6 +381,19 @@ export const REGISTRY = Object.freeze([
     default: 'HH:mm:ss',
     description:
       'Time format for the per-message timestamp column in chat buffers. ' +
+      'Tokens: YYYY MM DD HH mm ss. Empty string hides the column.',
+  },
+  {
+    key: 'look.buffer.time_format_compact',
+    category: 'appearance',
+    group: 'misc',
+    type: 'string',
+    default: 'HH:mm',
+    description:
+      'Time format used in chat buffers when the compact message layout is ' +
+      'active (look.message.layout = compact, or = auto on mobile). ' +
+      'Defaults to HH:mm — compact\'s right-aligned per-line timestamp is ' +
+      'tight on small viewports and seconds are rarely useful at a glance. ' +
       'Tokens: YYYY MM DD HH mm ss. Empty string hides the column.',
   },
   {

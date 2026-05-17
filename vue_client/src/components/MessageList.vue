@@ -4,7 +4,7 @@
 -->
 
 <template>
-  <div ref="scroller" class="message-list" @scroll="onScroll" @wheel="onWheel">
+  <div ref="scroller" class="message-list" :class="{ compact: compactMode }" @scroll="onScroll" @wheel="onWheel">
     <!-- No "loading older…" notice. It would appear/disappear above the
          user's view during a history fetch, shifting scrollTop and either
          throwing off the prepend anchor math or (with browser anchoring)
@@ -52,14 +52,16 @@
       :class="rowClass(row)"
       :data-msg-id="row.m.id ?? null"
     >
-      <span class="time">{{ row.continuationTime ? '' : time(row.m.time) }}</span>
-      <span
-        class="prefix"
-        :class="prefixClass(row.m)"
-        :style="row.continuationAuthor ? null : prefixStyle(row.m)"
-      >{{ row.continuationAuthor ? '' : prefixText(row.m) }}</span>
-      <span class="body" :class="bodyClass(row.m)">
-        <template v-if="hasInlineText(row.m)">
+      <template v-if="compactMode && row.m.type === 'message'">
+        <!-- Compact-mode message rows (IRCCloud-style): nick on its own
+             head line above the body; body row carries the body and a
+             right-aligned timestamp. The head is omitted entirely on
+             author continuations so a run of same-author messages reads
+             as one block, but every body row still shows its own time. -->
+        <div v-if="!row.continuationAuthor" class="head">
+          <span class="prefix" :class="prefixClass(row.m)" :style="prefixStyle(row.m)">{{ row.m.nick }}</span>
+        </div>
+        <span class="body" :class="bodyClass(row.m)">
           <template v-for="(seg, j) in textSegments(row.m)" :key="j">
             <a
               v-if="seg.url"
@@ -72,17 +74,42 @@
             <span v-else-if="segHasStyle(seg)" :style="segStyle(seg)">{{ seg.text }}</span>
             <template v-else>{{ seg.text }}</template>
           </template>
-        </template>
-        <template v-else-if="row.m.type === 'join'"><NickRef :nick="row.m.nick" /> joined</template>
-        <template v-else-if="row.m.type === 'part'"><NickRef :nick="row.m.nick" /> left<template v-if="row.m.text"> (<LinkedText :text="row.m.text" />)</template></template>
-        <template v-else-if="row.m.type === 'quit'"><NickRef :nick="row.m.nick" /> quit<template v-if="row.m.text"> (<LinkedText :text="row.m.text" />)</template></template>
-        <template v-else-if="row.m.type === 'kick'"><NickRef :nick="row.m.kicked" /> kicked by <NickRef :nick="row.m.nick" /><template v-if="row.m.text"> (<LinkedText :text="row.m.text" />)</template></template>
-        <template v-else-if="row.m.type === 'nick'"><NickRef :nick="row.m.nick" /> is now <NickRef :nick="row.m.newNick" /></template>
-        <template v-else-if="row.m.type === 'mode'">mode by <NickRef :nick="row.m.nick" /><template v-if="row.m.text">: <LinkedText :text="row.m.text" /></template></template>
-        <template v-else-if="row.m.type === 'topic'">topic set by <NickRef :nick="row.m.nick" /><template v-if="row.m.text">: <LinkedText :text="row.m.text" /></template></template>
-        <template v-else-if="row.m.type === 'motd'"><LinkedText :text="row.m.text" /></template>
-        <template v-else-if="row.m.type === 'error'"><LinkedText :text="row.m.text" /></template>
-      </span>
+        </span>
+        <span class="time">{{ row.continuationTime ? '' : time(row.m.time) }}</span>
+      </template>
+      <template v-else>
+        <span class="time">{{ row.continuationTime ? '' : time(row.m.time) }}</span>
+        <span
+          class="prefix"
+          :class="prefixClass(row.m)"
+          :style="row.continuationAuthor ? null : prefixStyle(row.m)"
+        >{{ row.continuationAuthor ? '' : prefixText(row.m) }}</span>
+        <span class="body" :class="bodyClass(row.m)">
+          <template v-if="hasInlineText(row.m)">
+            <template v-for="(seg, j) in textSegments(row.m)" :key="j">
+              <a
+                v-if="seg.url"
+                class="msg-link"
+                :href="seg.url"
+                target="_blank"
+                rel="noreferrer noopener"
+                :style="segStyle(seg)"
+              >{{ seg.text }}</a>
+              <span v-else-if="segHasStyle(seg)" :style="segStyle(seg)">{{ seg.text }}</span>
+              <template v-else>{{ seg.text }}</template>
+            </template>
+          </template>
+          <template v-else-if="row.m.type === 'join'"><NickRef :nick="row.m.nick" /> joined</template>
+          <template v-else-if="row.m.type === 'part'"><NickRef :nick="row.m.nick" /> left<template v-if="row.m.text"> (<LinkedText :text="row.m.text" />)</template></template>
+          <template v-else-if="row.m.type === 'quit'"><NickRef :nick="row.m.nick" /> quit<template v-if="row.m.text"> (<LinkedText :text="row.m.text" />)</template></template>
+          <template v-else-if="row.m.type === 'kick'"><NickRef :nick="row.m.kicked" /> kicked by <NickRef :nick="row.m.nick" /><template v-if="row.m.text"> (<LinkedText :text="row.m.text" />)</template></template>
+          <template v-else-if="row.m.type === 'nick'"><NickRef :nick="row.m.nick" /> is now <NickRef :nick="row.m.newNick" /></template>
+          <template v-else-if="row.m.type === 'mode'">mode by <NickRef :nick="row.m.nick" /><template v-if="row.m.text">: <LinkedText :text="row.m.text" /></template></template>
+          <template v-else-if="row.m.type === 'topic'">topic set by <NickRef :nick="row.m.nick" /><template v-if="row.m.text">: <LinkedText :text="row.m.text" /></template></template>
+          <template v-else-if="row.m.type === 'motd'"><LinkedText :text="row.m.text" /></template>
+          <template v-else-if="row.m.type === 'error'"><LinkedText :text="row.m.text" /></template>
+        </span>
+      </template>
     </div>
     </template>
   </div>
@@ -96,6 +123,7 @@ import { useSettingsStore } from '../stores/settings.js';
 import { useIgnoresStore } from '../stores/ignores.js';
 import { socketSend } from '../composables/useSocket.js';
 import { useNickColors } from '../composables/useNickColors.js';
+import { useViewport } from '../composables/useViewport.js';
 import {
   setStuckToBottom,
   bumpNewBelow,
@@ -118,10 +146,18 @@ const buffers = useBuffersStore();
 const settings = useSettingsStore();
 const ignores = useIgnoresStore();
 const nicks = useNickColors();
+const { isMobile } = useViewport();
 
 const actionItalic = computed(() => !!settings.effective('look.action.italic'));
 const selfColor = computed(() => settings.effective('look.nick.self_color'));
-const tsFormat = computed(() => settings.effective('look.buffer.time_format'));
+// Compact mode uses its own format setting so users can run the per-line
+// time column at lower precision (default HH:mm) without affecting their
+// standard-layout timestamps. Note: `tsFormat` is referenced via `time()`
+// inside the collapseDisplay formatter too, so the timestamp-collapse
+// granularity follows the active format automatically.
+const tsFormat = computed(() => settings.effective(
+  compactMode.value ? 'look.buffer.time_format_compact' : 'look.buffer.time_format',
+));
 
 const scroller = ref(null);
 const stickToBottom = ref(true);
@@ -182,6 +218,25 @@ const collapseAuthorsWindowMs = computed(() =>
   Math.max(0, settings.effective('look.message.collapse_authors_window') || 0) * 60_000,
 );
 const collapseTimestampsEnabled = computed(() => !!settings.effective('look.message.collapse_timestamps'));
+
+// look.message.layout: auto / standard / compact. Compact swaps the 3-column
+// subgrid for a two-line stack (head: nick + time, body below) on
+// `type === 'message'` rows; other row types stay single-line. Auto picks
+// compact on mobile-width viewports so phone users get the reflow by default.
+const layoutSetting = computed(() => settings.effective('look.message.layout') || 'auto');
+const compactMode = computed(() => {
+  if (layoutSetting.value === 'compact') return true;
+  if (layoutSetting.value === 'standard') return false;
+  return isMobile.value;
+});
+
+// Compact mode forces author collapsing — the head is the only place the
+// nick appears, and without collapsing the buffer is wall-to-wall headers.
+// Timestamp collapsing stays user-opt-in regardless of mode: compact's
+// right-aligned time is its own visual column (IRCCloud-style), so the
+// repetition is much less noisy than in standard mode.
+const effectiveCollapseAuthors = computed(() => compactMode.value || collapseAuthorsEnabled.value);
+const effectiveCollapseTimestamps = computed(() => collapseTimestampsEnabled.value);
 
 // User-level self-presence (driven by user_away_state on the server). Each
 // network broadcasts the same payload, so reading from this buffer's network
@@ -342,12 +397,14 @@ const renderRows = computed(() => {
   // Per-row display collapsing (nick + timestamp dedupe). Runs over the same
   // row shape consolidateRows emits and tags rows in place — the template
   // checks row.continuationAuthor / row.continuationTime to render empty
-  // prefix/time cells (subgrid stays aligned).
-  if (collapseAuthorsEnabled.value || collapseTimestampsEnabled.value) {
+  // prefix/time cells (subgrid stays aligned). compactMode tells the util
+  // to skip hidden continuation rows when tracking the time chain.
+  if (effectiveCollapseAuthors.value || effectiveCollapseTimestamps.value) {
     collapseDisplay(final, {
-      collapseAuthors: collapseAuthorsEnabled.value,
+      collapseAuthors: effectiveCollapseAuthors.value,
       authorWindowMs: collapseAuthorsWindowMs.value,
-      collapseTimestamps: collapseTimestampsEnabled.value,
+      collapseTimestamps: effectiveCollapseTimestamps.value,
+      compactMode: compactMode.value,
       formatTime: (iso) => time(iso),
     });
   }
@@ -621,6 +678,15 @@ watch(() => networks.activeKey, async () => {
   ensureViewportFilled();
 }, { immediate: true });
 
+// Layout toggle reflows every row's height (3-col grid ↔ stacked head+body).
+// scrollTop becomes meaningless across the swap; re-snap if the user was
+// pinned, otherwise leave them where they are (their reading position is
+// approximately preserved by the surrounding content).
+watch(compactMode, async () => {
+  await nextTick();
+  if (stickToBottom.value) scrollToBottom();
+});
+
 // StatusBar's "[N new ↓]" click increments scrollToBottomToken. Watching the
 // token (rather than wiring a callback) keeps the composable stateless and
 // avoids leaking refs to MessageList's DOM out of the component.
@@ -718,7 +784,11 @@ watch(() => props.pendingScrollId, async (id) => {
   grid-template-columns: subgrid;
   align-items: baseline;
 }
-.line.alt { background: var(--alt-bg); color: var(--alt-fg); }
+/* Alt-row striping is a standard-mode helper for telling adjacent same-type
+   rows apart in a dense column. In compact mode, message groups already
+   visually separate via the head/gap rhythm, so striping individual lines
+   inside a group fights the grouping signal — drop it. */
+.message-list:not(.compact) .line.alt { background: var(--alt-bg); color: var(--alt-fg); }
 .line:hover { background: var(--bg-soft); }
 
 /* Matched highlight (rule fired): warm background tint. Sits above .alt so
@@ -727,7 +797,7 @@ watch(() => props.pendingScrollId, async (id) => {
 .line.highlight {
   background: color-mix(in srgb, var(--warn) 12%, transparent);
 }
-.line.highlight.alt {
+.message-list:not(.compact) .line.highlight.alt {
   background: color-mix(in srgb, var(--warn) 18%, transparent);
 }
 .line.scroll-target {
@@ -786,19 +856,92 @@ watch(() => props.pendingScrollId, async (id) => {
 .body.italic { font-style: italic; }
 /* .msg-link styling lives in src/assets/main.css (shared with the topic bar). */
 
-/* Mobile: phone widths can't spare the time column or the 16ch nick floor —
-   either alone would leave 10ch for the body. We drop the time column
-   entirely and let the nick column collapse to the widest currently-visible
-   nick. The breakpoint matches useViewport's, so the column count changes
-   in lockstep with Chat.vue's view dispatch. */
+/* Mobile + standard layout: phone widths can't spare the time column or the
+   16ch nick floor — either alone would leave 10ch for the body. We drop the
+   time column entirely and let the nick column collapse to the widest
+   currently-visible nick. Scoped to :not(.compact) because compact mode
+   handles narrow viewports natively via its head-line layout, and the bare
+   `.time { display: none }` would otherwise hide the time inside compact's
+   head element. */
 @media (max-width: 768px) {
-  .message-list {
+  .message-list:not(.compact) {
     grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
     padding: 4px 8px;
   }
-  .time { display: none; }
-  .prefix { padding-right: 0.5ch; }
-  .body { padding-left: 0.5ch; }
+  .message-list:not(.compact) .time { display: none; }
+  .message-list:not(.compact) .prefix { padding-right: 0.5ch; }
+  .message-list:not(.compact) .body { padding-left: 0.5ch; }
+}
+
+/* Compact layout (look.message.layout = compact, or = auto on mobile):
+   IRCCloud-style two-column row — content on the left, timestamp on the
+   right — with messages getting a nick-only head line above. Only the
+   outer scroller and per-line layout change; the scroll/history machinery
+   is untouched. */
+.message-list.compact {
+  /* Single content column — the 3-col subgrid alignment goes away. */
+  grid-template-columns: minmax(0, 1fr);
+  padding: 4px 8px;
+}
+.message-list.compact .line {
+  /* Per-row grid: head spans both content columns above the body row;
+     body row is [prefix? body time]. When .head is absent (continuation
+     messages, non-message rows) the head track collapses to 0. When
+     line-level .prefix is absent (compact message body/continuation rows)
+     the prefix column collapses to 0 and body takes the remaining width. */
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "head   head head"
+    "prefix body time";
+  align-items: baseline;
+  column-gap: 0.75ch;
+  row-gap: 0;
+  padding: 2px 0;
+  /* Group separator: every non-continuation line marks the start of a new
+     visual cluster (message head, action, notice, system event,
+     consolidation summary). Transparent (not padding) so adjacent hover
+     backgrounds don't touch across the gap. Adjacent siblings collapse
+     vertical margins, so back-to-back clusters get one 10px gap, not 20px. */
+  margin-top: 10px;
+}
+/* Continuation message rows render only body + time — no head, no cluster
+   start — and should sit tight under the previous line. */
+.message-list.compact .line.cont-author {
+  margin-top: 0;
+}
+.message-list.compact .line > .head {
+  grid-area: head;
+  display: flex;
+  align-items: baseline;
+  gap: 0.75ch;
+}
+/* Inside the head we want the nick at the left edge — undo the standard
+   prefix rules (justify-self: end / padding-right: 1ch) that the 3-col
+   grid relies on. */
+.message-list.compact .line > .head .prefix {
+  justify-self: auto;
+  padding-right: 0;
+}
+.message-list.compact .line > .prefix {
+  grid-area: prefix;
+  justify-self: start;
+  padding-right: 0;
+}
+.message-list.compact .line > .body {
+  grid-area: body;
+  padding-left: 0;
+}
+.message-list.compact .line > .time {
+  grid-area: time;
+  color: var(--fg-muted);
+  padding-right: 0;
+  padding-left: 0.75ch;
+}
+/* The vertical separator between nick and body columns belongs to the
+   3-column standard layout — drop it in compact mode. */
+.message-list.compact .line > .body::before {
+  display: none;
 }
 
 .notice {

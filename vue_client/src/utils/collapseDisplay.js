@@ -31,6 +31,12 @@ export function collapseDisplay(rows, options = {}) {
 
   const formatTime = options.formatTime || (() => '');
   const authorWindowMs = Math.max(0, options.authorWindowMs ?? 0);
+  // In compact mode a message row tagged continuationAuthor hides its entire
+  // head (nick + time both disappear), so it must not participate in the
+  // time chain — otherwise the next visible time could be over-suppressed,
+  // or a head's time could be cleared because a hidden continuation row
+  // happened to match it.
+  const compactMode = !!options.compactMode;
 
   let prevAuthorKey = null;
   let prevAuthorTimeMs = null;
@@ -74,11 +80,14 @@ export function collapseDisplay(rows, options = {}) {
     }
 
     if (collapseTimestamps) {
-      if (prevTimeSeen && prevTimeStr === timeStr && timeStr !== '') {
-        row.continuationTime = true;
+      const timeHidden = compactMode && row.continuationAuthor;
+      if (!timeHidden) {
+        if (prevTimeSeen && prevTimeStr === timeStr && timeStr !== '') {
+          row.continuationTime = true;
+        }
+        prevTimeStr = timeStr;
+        prevTimeSeen = true;
       }
-      prevTimeStr = timeStr;
-      prevTimeSeen = true;
     }
   }
 
