@@ -37,7 +37,7 @@ import { computed } from 'vue';
 import { useNetworksStore } from '../stores/networks.js';
 import { useSettingsStore } from '../stores/settings.js';
 import { useNickColors } from '../composables/useNickColors.js';
-import { formatTimestamp } from '../utils/timestamp.js';
+import { formatTimestamp, formatDate } from '../utils/timestamp.js';
 
 const props = defineProps({
   message: { type: Object, required: true },
@@ -53,7 +53,16 @@ const nicks = useNickColors();
 const tsFormat = computed(() => settings.effective('look.buffer.time_format'));
 const selfColor = computed(() => settings.effective('look.nick.self_color'));
 
-const time = computed(() => formatTimestamp(props.message.time, tsFormat.value));
+// History rows are out-of-buffer (search/highlights), so a bare HH:mm is
+// ambiguous — prepend the calendar date. Skipped if the user's format
+// already includes a year token to avoid doubling up.
+const time = computed(() => {
+  const t = formatTimestamp(props.message.time, tsFormat.value);
+  if (tsFormat.value && /YYYY/.test(tsFormat.value)) return t;
+  const d = formatDate(props.message.time);
+  if (!d) return t;
+  return t ? `${d} ${t}` : d;
+});
 
 const networkLabel = computed(() => {
   const m = props.message;
