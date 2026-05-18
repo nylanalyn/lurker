@@ -446,6 +446,9 @@ ensureColumn('messages', 'extra', 'TEXT');
 ensureColumn('messages', 'userhost', 'TEXT');
 ensureColumn('networks', 'sasl_account', 'TEXT');
 ensureColumn('networks', 'sasl_password', 'TEXT');
+// Newline-delimited raw IRC commands fired after RPL_WELCOME, IRCCloud-style.
+// Supports `WAIT <seconds>` lines that pause before the next command.
+ensureColumn('networks', 'connect_commands', 'TEXT');
 ensureColumn('users', 'password_hash', 'TEXT');
 ensureColumn('users', 'last_seen_at', 'TEXT');
 

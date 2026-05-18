@@ -18,10 +18,10 @@ export function ownsNetwork(userId, networkId) {
 }
 
 export function createNetwork(userId, fields) {
-  const { name, host, port, tls, nick, username, realname, server_password, autoconnect, sasl_account, sasl_password } = fields;
+  const { name, host, port, tls, nick, username, realname, server_password, autoconnect, sasl_account, sasl_password, connect_commands } = fields;
   const result = db.prepare(`
-    INSERT INTO networks (user_id, name, host, port, tls, nick, username, realname, server_password, autoconnect, sasl_account, sasl_password)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO networks (user_id, name, host, port, tls, nick, username, realname, server_password, autoconnect, sasl_account, sasl_password, connect_commands)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     userId,
     name,
@@ -35,12 +35,13 @@ export function createNetwork(userId, fields) {
     autoconnect === false ? 0 : 1,
     sasl_account || null,
     sasl_password || null,
+    connect_commands || null,
   );
   return getNetwork(result.lastInsertRowid, userId);
 }
 
 export function updateNetwork(id, userId, fields) {
-  const allowed = ['name', 'host', 'port', 'tls', 'nick', 'username', 'realname', 'server_password', 'autoconnect', 'sasl_account', 'sasl_password'];
+  const allowed = ['name', 'host', 'port', 'tls', 'nick', 'username', 'realname', 'server_password', 'autoconnect', 'sasl_account', 'sasl_password', 'connect_commands'];
   const setClauses = [];
   const params = [];
   for (const key of allowed) {

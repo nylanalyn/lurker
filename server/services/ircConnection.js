@@ -95,6 +95,9 @@ export class IrcConnection {
     this.monitorLimit = 0;
     this.pendingMonitorSeed = false;
     this.disposed = false;
+    // Pending timer for the next WAIT-delayed connect command. Cleared on
+    // close/dispose so we never call client.raw() after the socket is gone.
+    this.connectCommandTimer = null;
     this.lagMs = null;
     this.lagPingTimer = null;
     this.lagPendingToken = null;
@@ -294,10 +297,16 @@ export class IrcConnection {
       if (this.awayState.active && this.awayState.message) {
         try { this.client.raw('AWAY :' + this.awayState.message); } catch (_) { /* ignore */ }
       }
+      // IRCCloud-style "commands to run on connect" — newline-delimited raw
+      // IRC lines fired after 001. `WAIT <seconds>` pauses before the next
+      // command (e.g. waiting for NickServ identify to take effect before
+      // joining +r channels). Re-runs on every reconnect by design.
+      this.runConnectCommands();
     });
     c.on('close', () => {
       this.userModes.clear();
       this.stopLagPinger();
+      this.cancelPendingConnectCommands();
       this.lagMs = null;
       // Next socket starts a fresh fallback ladder from the configured nick.
       this.preRegistered = true;
@@ -1355,7 +1364,43 @@ export class IrcConnection {
   dispose(reason = 'network removed') {
     this.disposed = true;
     this.stopLagPinger();
+    this.cancelPendingConnectCommands();
     try { this.client.quit(reason); } catch (_) { /* ignore */ }
+  }
+
+  cancelPendingConnectCommands() {
+    if (this.connectCommandTimer) {
+      clearTimeout(this.connectCommandTimer);
+      this.connectCommandTimer = null;
+    }
+  }
+
+  // Parse and execute connect_commands sequentially. Lines matching
+  // `WAIT <seconds>` (case-insensitive, integer seconds, 1–600) schedule a
+  // delay before the next line; everything else is sent verbatim via raw().
+  // Cancels itself if the socket drops mid-sequence.
+  runConnectCommands() {
+    this.cancelPendingConnectCommands();
+    const raw = this.network.connect_commands;
+    if (!raw || typeof raw !== 'string') return;
+    const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0);
+    if (!lines.length) return;
+    let index = 0;
+    const runNext = () => {
+      this.connectCommandTimer = null;
+      if (this.disposed || this.state !== 'connected') return;
+      while (index < lines.length) {
+        const line = lines[index++];
+        const waitMatch = /^WAIT\s+(\d+)\s*$/i.exec(line);
+        if (waitMatch) {
+          const seconds = Math.max(1, Math.min(600, parseInt(waitMatch[1], 10)));
+          this.connectCommandTimer = setTimeout(runNext, seconds * 1000);
+          return;
+        }
+        try { this.client.raw(line); } catch (_) { /* ignore */ }
+      }
+    };
+    runNext();
   }
 
   snapshot() {

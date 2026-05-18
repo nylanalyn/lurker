@@ -38,13 +38,13 @@ router.get('/', (req, res) => {
 router.post('/', (req, res) => {
   const {
     name, host, port, tls, nick, username, realname, server_password,
-    autoconnect, sasl_account, sasl_password, default_channel,
+    autoconnect, sasl_account, sasl_password, default_channel, connect_commands,
   } = req.body || {};
   if (!name || !host || !nick) return res.status(400).json({ error: 'name, host, and nick are required' });
 
   const network = createNetwork(req.user.id, {
     name, host, port, tls, nick, username, realname, server_password,
-    autoconnect, sasl_account, sasl_password,
+    autoconnect, sasl_account, sasl_password, connect_commands,
   });
   const channel = (default_channel || '').trim();
   if (channel) upsertChannel(network.id, channel, true);

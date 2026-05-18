@@ -33,38 +33,54 @@
         <span>Real name (optional)</span>
         <input v-model="form.realname" />
       </label>
-      <label>
-        <span>Server password (optional)</span>
-        <input
-          v-model="form.server_password"
-          type="password"
-          autocomplete="off"
-          :placeholder="isEdit && props.network?.has_password ? '(saved — type to replace)' : ''"
-        />
-      </label>
-      <div class="row">
-        <label class="grow">
-          <span>SASL account (optional)</span>
-          <input v-model="form.sasl_account" :placeholder="form.nick || 'defaults to nick'" autocomplete="off" />
-        </label>
-        <label class="grow">
-          <span>SASL password (optional)</span>
+      <button type="button" class="advanced-toggle" @click="showAdvanced = !showAdvanced">
+        {{ showAdvanced ? '− Advanced options' : '+ Advanced options' }}
+      </button>
+      <div v-if="showAdvanced" class="advanced">
+        <label>
+          <span>Server password (optional)</span>
           <input
-            v-model="form.sasl_password"
+            v-model="form.server_password"
             type="password"
             autocomplete="off"
-            :placeholder="isEdit && props.network?.has_sasl_password ? '(saved — type to replace)' : ''"
+            :placeholder="isEdit && props.network?.has_password ? '(saved — type to replace)' : ''"
           />
         </label>
+        <div class="row">
+          <label class="grow">
+            <span>SASL account (optional)</span>
+            <input v-model="form.sasl_account" :placeholder="form.nick || 'defaults to nick'" autocomplete="off" />
+          </label>
+          <label class="grow">
+            <span>SASL password (optional)</span>
+            <input
+              v-model="form.sasl_password"
+              type="password"
+              autocomplete="off"
+              :placeholder="isEdit && props.network?.has_sasl_password ? '(saved — type to replace)' : ''"
+            />
+          </label>
+        </div>
+        <label v-if="!isEdit">
+          <span>Default channel</span>
+          <input v-model="form.default_channel" placeholder="#lurker" />
+        </label>
+        <label>
+          <span>Commands to run on connect</span>
+          <textarea
+            v-model="form.connect_commands"
+            rows="4"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="AUTH <user> <password> etc…"
+          />
+          <small>One per line, e.g. for opering up on connect. If you need to add a (eg, 15 sec) delay between commands, you can write: WAIT 15</small>
+        </label>
+        <label class="check">
+          <input v-model="form.autoconnect" type="checkbox" />
+          <span>Reconnect automatically</span>
+        </label>
       </div>
-      <label v-if="!isEdit">
-        <span>Default channel</span>
-        <input v-model="form.default_channel" placeholder="#lurker" />
-      </label>
-      <label class="check">
-        <input v-model="form.autoconnect" type="checkbox" />
-        <span>Reconnect automatically</span>
-      </label>
       <p v-if="error" class="error">{{ error }}</p>
       <div class="actions">
         <button v-if="isEdit" type="button" class="danger" :disabled="loading" @click="remove">Delete</button>
@@ -101,7 +117,21 @@ const form = reactive({
   sasl_password: '',
   default_channel: '#lurker',
   autoconnect: props.network ? !!props.network.autoconnect : true,
+  connect_commands: props.network?.connect_commands ?? '',
 });
+
+// Auto-expand advanced when editing a row that already has any advanced value
+// set, so the user doesn't have to hunt for a saved password or connect script
+// they configured previously.
+const showAdvanced = ref(
+  !!props.network && (
+    !!props.network.has_password
+    || !!props.network.has_sasl_password
+    || !!props.network.sasl_account
+    || !!props.network.connect_commands
+    || props.network.autoconnect === false
+  )
+);
 
 const loading = ref(false);
 const error = ref(null);
@@ -119,6 +149,7 @@ function connectionChanged() {
   if ((form.nick || '') !== (orig.nick || '')) return true;
   if ((form.realname || '') !== (orig.realname || '')) return true;
   if ((form.sasl_account || '') !== (orig.sasl_account || '')) return true;
+  if ((form.connect_commands || '') !== (orig.connect_commands || '')) return true;
   // Passwords are write-only on the API, so any non-empty value is a new value.
   if (form.server_password) return true;
   if (form.sasl_password) return true;
@@ -139,6 +170,7 @@ async function submit() {
         realname: form.realname,
         sasl_account: form.sasl_account,
         autoconnect: form.autoconnect,
+        connect_commands: form.connect_commands,
       };
       if (form.server_password) patch.server_password = form.server_password;
       if (form.sasl_password) patch.sasl_password = form.sasl_password;
@@ -212,7 +244,21 @@ label span { text-transform: uppercase; letter-spacing: 0.04em; }
 /* width:100% + border-box keeps inputs sized to their label rather than their
    intrinsic (size=20) width, so flex columns can't be pushed wider than the
    card. */
-label input { color: var(--fg); width: 100%; box-sizing: border-box; }
+label input,
+label textarea { color: var(--fg); width: 100%; box-sizing: border-box; }
+label textarea { font-family: inherit; resize: vertical; min-height: 80px; }
+label small { color: var(--fg-muted); margin-top: 2px; text-transform: none; letter-spacing: normal; }
+.advanced-toggle {
+  align-self: flex-start;
+  background: transparent;
+  border: 0;
+  padding: 4px 0;
+  color: var(--accent);
+  cursor: pointer;
+  text-transform: lowercase;
+}
+.advanced-toggle:hover { text-decoration: underline; }
+.advanced { display: flex; flex-direction: column; gap: 10px; }
 .row { display: flex; gap: 8px; align-items: end; }
 /* min-width:0 lets a flex item shrink below its content's intrinsic width —
    without it two side-by-side inputs (the SASL row) overflow the card. */
