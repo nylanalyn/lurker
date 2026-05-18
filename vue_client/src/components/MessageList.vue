@@ -965,6 +965,7 @@ watch(() => props.pendingScrollId, async (id) => {
    inside a group fights the grouping signal — drop it. */
 .message-list:not(.compact) .line.alt { background: var(--alt-bg); color: var(--alt-fg); }
 .line:hover { background: var(--bg-soft); }
+.message-list:not(.compact) .line.alt:hover { background: var(--bg-soft); color: var(--fg); }
 
 /* Hover-revealed three-dots button on eligible rows (desktop only). Sits in
    the gutter on the right edge of the line. Hidden on touch viewports;
