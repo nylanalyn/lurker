@@ -1026,6 +1026,25 @@ export const REGISTRY = Object.freeze([
       'setting lets desktop users opt into the same behavior.',
   },
 
+  // ─── Input bar (formatting) ──────────────────────────────────────────
+  // Surfaces the mIRC palette popover for users who want to insert colour /
+  // bold / italic / underline codes via mouse. The Cmd/Ctrl+B/I/U keyboard
+  // shortcuts always work regardless of this toggle — this only controls the
+  // icon's visibility in the input row.
+  {
+    key: 'input.show_format_button',
+    label: 'Show formatting button',
+    category: 'input',
+    group: 'formatting',
+    type: 'bool',
+    default: false,
+    description:
+      'Show the palette icon in the input row that opens a mIRC colour picker ' +
+      '(and a clear-formatting option). Off by default to keep the input chrome ' +
+      'minimal — the Cmd/Ctrl+B/I/U keyboard shortcuts for bold/italic/underline ' +
+      'work either way.',
+  },
+
   // ─── System / locale ──────────────────────────────────────────────────
   {
     key: 'system.timezone',
@@ -1107,5 +1126,6 @@ export const GROUPS = Object.freeze({
   push_filters: 'Push filters',
   system_features: 'System text features',
   autocomplete: 'Autocomplete',
+  formatting: 'Formatting',
   locale: 'Locale',
 });

@@ -40,6 +40,28 @@
       title="upload image"
       @click="onPickFile"
     ><i class="fa-solid fa-paperclip"></i></button>
+    <!-- mIRC color picker trigger. Opt-in via `input.show_format_button`
+         (off by default) — the Cmd/Ctrl+B/I/U shortcuts remain active either
+         way, so hiding the icon only removes the mouse-driven path.
+         mousedown.prevent keeps focus on the textarea so opening the picker
+         (or tapping it on iOS) doesn't dismiss the soft keyboard or blur the
+         selection we're about to wrap. -->
+    <div
+      v-if="showFormatButton"
+      role="button"
+      class="format-btn"
+      :class="{ disabled: !sendable }"
+      title="mIRC formatting (Cmd/Ctrl+B/I/U for bold/italic/underline)"
+      @mousedown.prevent
+      @click="onToggleColorPicker"
+    ><i class="fa-solid fa-palette"></i></div>
+    <MircColorPicker
+      v-if="showFormatButton"
+      :open="colorPickerOpen"
+      @color="onPickColor"
+      @reset="onPickReset"
+      @close="closeColorPicker"
+    />
     <NickPicker
       :open="pickerOpen"
       :query="pickerQuery"
@@ -87,6 +109,7 @@ import { buildNickCandidates } from '../utils/nickCompletion.js';
 import NickPicker from './NickPicker.vue';
 import NickSuggestionStrip from './NickSuggestionStrip.vue';
 import LongMessageUploadModal from './LongMessageUploadModal.vue';
+import MircColorPicker from './MircColorPicker.vue';
 import { useSelfLabel } from '../composables/useSelfLabel.js';
 import { useViewport } from '../composables/useViewport.js';
 
@@ -110,6 +133,7 @@ const stripOpen = ref(false);
 const stripQuery = ref('');
 let stripTokenStart = -1;
 let stripTokenEnd = -1;
+const colorPickerOpen = ref(false);
 
 const active = computed(() => networks.activeBuffer);
 
@@ -146,6 +170,10 @@ const placeholder = computed(() => {
   if (isServer.value) return '/raw <line>';
   return 'try /help';
 });
+// Opt-in palette icon. The keyboard shortcuts in onKeydown ignore this gate —
+// users can still wrap selections with Cmd/Ctrl+B/I/U even with the icon
+// hidden, and the colour picker is just the mouse path for the same codes.
+const showFormatButton = computed(() => settings.effective('input.show_format_button') === true);
 // HTML attribute values for the system text features. spellcheck is the only
 // one the browser parses as a boolean; the others take "on"/"off" or an enum.
 // autocapitalize rides on input.autocorrect because Safari silently re-applies
@@ -388,7 +416,99 @@ function onBlur() {
   if (active.value) drafts.flushBuffer(active.value.networkId, active.value.target);
 }
 
+// mIRC formatting control bytes. These are real bytes on the wire — irc-framework
+// passes the message text through verbatim, so anything we insert here is what
+// remote clients see (and what splitTextByTokens in nickColor.js parses back out
+// for local echo). The chunk-count gate in messageSplit.js counts bytes via
+// TextEncoder, so each control char correctly contributes one byte to the
+// SPLIT/FLOOD estimate.
+const FMT_BOLD = "\x02";
+const FMT_ITALIC = "\x1D";
+const FMT_UNDERLINE = "\x1F";
+const FMT_COLOR = "\x03";
+const FMT_RESET = "\x0F";
+
+// Wrap the current selection with `opening`…`closing`, or insert `opening`
+// alone at the caret if nothing is selected (mIRC-style: a bare toggle code
+// flips state for whatever follows). Routes the new value through the same
+// cycling guard that nick completion uses so onInput doesn't reset history
+// nav or fire a typing notification mid-write.
+function wrapOrInsertFormatting(opening, closing) {
+  const el = inputEl.value;
+  if (!el) return;
+  const value = text.value;
+  const start = el.selectionStart ?? value.length;
+  const end = el.selectionEnd ?? value.length;
+  const selected = value.slice(start, end);
+  const tail = selected ? closing : '';
+  cycling = true;
+  text.value = value.slice(0, start) + opening + selected + tail + value.slice(end);
+  cycling = false;
+  // Selection-aware caret restore: with a selection, re-select the wrapped
+  // body so the user can keep applying combinations (bold + italic + colour)
+  // without re-highlighting. With no selection, drop the caret just after
+  // the inserted code so they can type styled text.
+  Promise.resolve().then(() => {
+    const e2 = inputEl.value;
+    if (!e2) return;
+    e2.focus();
+    if (selected) {
+      const s = start + opening.length;
+      e2.setSelectionRange(s, s + selected.length);
+    } else {
+      const c = start + opening.length;
+      e2.setSelectionRange(c, c);
+    }
+  });
+}
+
+function onToggleColorPicker() {
+  if (!sendable.value) return;
+  colorPickerOpen.value = !colorPickerOpen.value;
+}
+
+function closeColorPicker() {
+  colorPickerOpen.value = false;
+}
+
+function onPickColor(code) {
+  // `code` is a 2-digit string ("00".."15"). A bare \x03 with no digits would
+  // close any open colour run, but for a deliberate pick we always emit
+  // digits so the colour actually takes effect.
+  wrapOrInsertFormatting(FMT_COLOR + code, FMT_COLOR);
+  closeColorPicker();
+}
+
+function onPickReset() {
+  // \x0F resets every active toggle at once. Useful as the closing marker for
+  // a multi-format run, or as a one-shot "go back to default" mid-message.
+  // Treated as a single insert (no closing pair) regardless of selection.
+  wrapOrInsertFormatting(FMT_RESET, '');
+  closeColorPicker();
+}
+
 function onKeydown(e) {
+  // Formatting shortcuts (Cmd/Ctrl + B/I/U). preventDefault stops the browser
+  // from owning Cmd+B for "bookmarks bar"; stopPropagation keeps the global
+  // shortcut handler in useKeyboardShortcuts.js from seeing keys that map to
+  // app-level actions when focus is in the input. Bare letters fall through
+  // so the user can still type a literal 'b'.
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
+    const key = e.key.toLowerCase();
+    if (key === 'b' || key === 'i' || key === 'u') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!sendable.value) return;
+      const code = key === 'b' ? FMT_BOLD : key === 'i' ? FMT_ITALIC : FMT_UNDERLINE;
+      wrapOrInsertFormatting(code, code);
+      return;
+    }
+  }
+  if (e.key === 'Escape' && colorPickerOpen.value) {
+    e.preventDefault();
+    closeColorPicker();
+    return;
+  }
   if (e.key === 'Enter') {
     // Textareas don't submit forms on Enter, so we trigger submission here.
     // Shift+Enter falls through to the default newline insert. e.isComposing
@@ -607,6 +727,7 @@ watch(active, (newActive, oldActive) => {
   resetCompletion();
   closePicker();
   closeStrip();
+  closeColorPicker();
   resetHistoryNav();
   // A switch between buffers swaps the draft text via the `text` computed,
   // but any unused split-confirm token doesn't transfer — a fresh buffer is
@@ -768,6 +889,7 @@ async function submit() {
   resetCompletion();
   closePicker();
   closeStrip();
+  closeColorPicker();
   const raw = text.value;
   if (!raw.trim() || !active.value) return;
   const { networkId, target } = active.value;
@@ -1143,6 +1265,17 @@ function handleCommand(line, networkId, target) {
 }
 .upload-btn:hover:not(:disabled) { color: var(--accent); }
 .upload-btn:disabled { opacity: 0.4; cursor: default; }
+.format-btn {
+  color: var(--fg-muted);
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1.4;
+  user-select: none;
+  /* Avoids iOS double-tap-zoom delay so the picker opens promptly on touch. */
+  touch-action: manipulation;
+}
+.format-btn:hover:not(.disabled) { color: var(--accent); }
+.format-btn.disabled { opacity: 0.4; cursor: default; }
 .file-hidden { display: none; }
 textarea {
   flex: 1;

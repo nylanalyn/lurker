@@ -45,6 +45,9 @@ const shortcuts = computed(() => [
   { keys: ['PgDn'],              label: 'Scroll messages down one page' },
   { keys: ['Tab'],               label: 'Autocomplete nicks and channels' },
   { keys: ['↑', '↓'],            label: 'Browse input history' },
+  { keys: [MOD, 'B'],            label: 'Bold (wraps selection with mIRC code)' },
+  { keys: [MOD, 'I'],            label: 'Italic (wraps selection with mIRC code)' },
+  { keys: [MOD, 'U'],            label: 'Underline (wraps selection with mIRC code)' },
   { keys: [MOD, '/'],            label: 'Show this help panel' },
 ]);
 </script>
