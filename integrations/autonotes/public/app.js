@@ -17,6 +17,20 @@ const els = {
   reviewList: $("review-list"),
   reviewActions: $("review-actions"),
   applyAll: $("apply-all"),
+  tracePanel: $("trace-panel"),
+  traceList: $("trace-list"),
+  traceTotals: $("trace-totals"),
+};
+
+// Sonnet 4.6 pricing per million tokens. Used purely for the audit-view cost
+// readout — actual billing comes from Anthropic, this is informational. If
+// you change MODEL in lib/agent.js, update these to match (e.g. Opus 4.7 is
+// 5 / 25 / 0.5 / 6.25).
+const PRICING = {
+  input: 3,
+  output: 15,
+  cacheRead: 0.3,
+  cacheWrite5m: 3.75,
 };
 
 const state = {
@@ -26,6 +40,8 @@ const state = {
   scan: null,
   cards: new Map(), // nick -> { proposal, status, note }
   pollHandle: null,
+  renderedEventCount: 0, // index up to which the trace has been rendered
+  turnEls: new Map(), // turn number -> { container, body }
 };
 
 async function api(path, opts = {}) {
@@ -199,7 +215,12 @@ els.scanForm.addEventListener("submit", async (e) => {
 function enterReview(scanId) {
   showView("review");
   state.cards.clear();
+  state.renderedEventCount = 0;
+  state.turnEls.clear();
   els.reviewList.innerHTML = "";
+  els.traceList.innerHTML = "";
+  els.traceTotals.textContent = "";
+  els.tracePanel.hidden = true;
   els.reviewActions.hidden = true;
   setStatus(els.reviewSummary, "Running scan…");
   pollScan(scanId);
@@ -216,6 +237,8 @@ async function pollScan(scanId) {
   try {
     const scan = await api(`/api/scan/${scanId}`);
     state.scan = scan;
+    renderTrace(scan);
+
     if (scan.status === "running") {
       setStatus(els.reviewSummary, `Running… ${scan.toolCallCount} tool calls so far`);
       state.pollHandle = setTimeout(() => pollScan(scanId), 2000);
@@ -228,6 +251,111 @@ async function pollScan(scanId) {
     renderReview(scan);
   } catch (err) {
     setStatus(els.reviewSummary, err.message, "err");
+  }
+}
+
+function renderTrace(scan) {
+  const events = scan.events || [];
+  if (events.length === 0) return;
+  els.tracePanel.hidden = false;
+
+  // Append only events we haven't drawn yet — keeps the polling cheap and
+  // avoids the DOM flicker of re-rendering the whole trace on every tick.
+  for (let i = state.renderedEventCount; i < events.length; i++) {
+    appendTraceEvent(events[i]);
+  }
+  state.renderedEventCount = events.length;
+
+  // The last `turn` event carries the running totals; surface them in the summary.
+  let lastTurn = null;
+  for (const ev of events) if (ev.type === "turn") lastTurn = ev;
+  if (lastTurn?.totals) {
+    els.traceTotals.textContent = formatTotalsLine(lastTurn.totals);
+  }
+}
+
+function appendTraceEvent(ev) {
+  if (ev.type === "turn") {
+    const wrap = document.createElement("div");
+    wrap.className = "turn";
+    const head = document.createElement("div");
+    head.className = "turn-head";
+    head.textContent = `Turn ${ev.turn + 1} · ${formatUsageLine(ev.usage)} · ${ev.durationMs}ms · stop=${ev.stopReason}`;
+    const body = document.createElement("div");
+    body.className = "turn-body";
+    wrap.appendChild(head);
+    wrap.appendChild(body);
+    els.traceList.appendChild(wrap);
+    state.turnEls.set(ev.turn, { container: wrap, body });
+    return;
+  }
+
+  const turnEl = state.turnEls.get(ev.turn);
+  if (!turnEl) return;
+  const body = turnEl.body;
+
+  if (ev.type === "thinking") {
+    const div = document.createElement("div");
+    div.className = "trace-thinking";
+    div.innerHTML = `<span class="trace-tag">thinking</span> <span class="trace-text"></span>`;
+    div.querySelector(".trace-text").textContent = ev.text;
+    body.appendChild(div);
+  } else if (ev.type === "text") {
+    const div = document.createElement("div");
+    div.className = "trace-text-block";
+    div.innerHTML = `<span class="trace-tag">say</span> <span class="trace-text"></span>`;
+    div.querySelector(".trace-text").textContent = ev.text;
+    body.appendChild(div);
+  } else if (ev.type === "tool_use") {
+    const div = document.createElement("div");
+    div.className = "trace-tool";
+    div.dataset.toolUseId = ev.id;
+    const args = formatToolArgs(ev.input);
+    div.innerHTML = `<div class="trace-tool-call"><span class="trace-tag">tool</span> <code class="tool-name"></code><code class="tool-args"></code></div><div class="trace-tool-result trace-pending">running…</div>`;
+    div.querySelector(".tool-name").textContent = ev.name;
+    div.querySelector(".tool-args").textContent = args;
+    body.appendChild(div);
+  } else if (ev.type === "tool_result") {
+    const target = body.querySelector(`.trace-tool[data-tool-use-id="${ev.toolUseId}"] .trace-tool-result`);
+    if (target) {
+      target.classList.remove("trace-pending");
+      target.classList.toggle("trace-error", Boolean(ev.isError));
+      target.textContent = `→ ${ev.summary}`;
+    }
+  }
+}
+
+function formatUsageLine(u) {
+  if (!u) return "";
+  const parts = [
+    `${formatNumber(u.input_tokens)} in`,
+    `${formatNumber(u.output_tokens)} out`,
+  ];
+  if (u.cache_creation_input_tokens) parts.push(`${formatNumber(u.cache_creation_input_tokens)} cache-w`);
+  if (u.cache_read_input_tokens) parts.push(`${formatNumber(u.cache_read_input_tokens)} cache-r`);
+  return parts.join(" · ");
+}
+
+function formatTotalsLine(t) {
+  const cost =
+    (t.input_tokens * PRICING.input +
+      t.output_tokens * PRICING.output +
+      t.cache_read_input_tokens * PRICING.cacheRead +
+      t.cache_creation_input_tokens * PRICING.cacheWrite5m) /
+    1e6;
+  return `${formatNumber(t.input_tokens)} in · ${formatNumber(t.output_tokens)} out · ${formatNumber(t.cache_creation_input_tokens)} cache-w · ${formatNumber(t.cache_read_input_tokens)} cache-r · ~$${cost.toFixed(4)}`;
+}
+
+function formatNumber(n) {
+  return (n || 0).toLocaleString();
+}
+
+function formatToolArgs(input) {
+  try {
+    const compact = JSON.stringify(input);
+    return compact.length > 140 ? compact.slice(0, 139) + "…" : compact;
+  } catch {
+    return "{}";
   }
 }
 

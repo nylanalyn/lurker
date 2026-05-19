@@ -16,11 +16,19 @@ export function createScan({ networkId, target, depth }) {
     toolCallCount: 0,
     proposals: null,
     messages: null, // map of messageId -> message, for evidence rendering
+    events: [], // ordered trace of model turns / tool calls; consumed by the UI
     error: null,
     startedAt: Date.now(),
     finishedAt: null,
   };
   scans.set(id, scan);
+  return scan;
+}
+
+export function appendEvent(id, event) {
+  const scan = scans.get(id);
+  if (!scan) return null;
+  scan.events.push({ ...event, at: Date.now() });
   return scan;
 }
 

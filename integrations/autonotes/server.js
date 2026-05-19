@@ -6,7 +6,14 @@ import { dirname, resolve } from "node:path";
 import { loadConfig, saveConfig, maskToken } from "./lib/config.js";
 import { McpClient, McpError } from "./lib/mcpClient.js";
 import { runScan } from "./lib/agent.js";
-import { createScan, getScan, updateScan, finishScan, errorScan } from "./lib/scans.js";
+import {
+  createScan,
+  getScan,
+  updateScan,
+  finishScan,
+  errorScan,
+  appendEvent,
+} from "./lib/scans.js";
 
 const PORT = Number(process.env.PORT) || 5173;
 const here = dirname(fileURLToPath(import.meta.url));
@@ -106,6 +113,7 @@ app.post("/api/scan", async (req, res, next) => {
           scan,
           mcpClient: mcp,
           onProgress: (s) => updateScan(s.id, { toolCallCount: s.toolCallCount }),
+          onEvent: (ev) => appendEvent(scan.id, ev),
         });
         finishScan(scan.id, { proposals, messages });
       } catch (err) {
@@ -130,6 +138,7 @@ app.get("/api/scan/:id", (req, res) => {
     toolCallCount: scan.toolCallCount,
     proposals: scan.proposals,
     messages: scan.messages,
+    events: scan.events,
     error: scan.error,
     startedAt: scan.startedAt,
     finishedAt: scan.finishedAt,
