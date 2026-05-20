@@ -75,7 +75,7 @@ export function userHasPassword(userId: number): boolean {
   return getPasswordHash(userId) !== null;
 }
 
-export function setPasswordHash(userId: number, hash: string): boolean {
+export function setPasswordHash(userId: number, hash: string | null): boolean {
   const info = db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, userId);
   return info.changes > 0;
 }

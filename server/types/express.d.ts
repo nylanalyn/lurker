@@ -15,6 +15,7 @@ declare global {
     interface Request {
       user?: User;
       session?: Session;
+      apiToken?: { id: number | bigint; scope: string };
     }
   }
 }
