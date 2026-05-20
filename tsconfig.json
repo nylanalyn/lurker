@@ -10,8 +10,7 @@
     "moduleResolution": "nodenext",
     "target": "es2023",
     "lib": ["es2023"],
-    "types": ["node"],
-    "allowJs": true
+    "types": ["node"]
   },
   "include": ["server/**/*.ts", "shared/**/*.ts"],
   "exclude": ["node_modules", "vue_client", "integrations", "coverage"]

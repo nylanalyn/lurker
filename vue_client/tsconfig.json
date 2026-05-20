@@ -10,8 +10,7 @@
     "moduleResolution": "bundler",
     "target": "es2023",
     "lib": ["es2023", "dom", "dom.iterable"],
-    "types": ["node"],
-    "allowJs": true
+    "types": ["node"]
   },
   "include": [
     "src/**/*.ts",
