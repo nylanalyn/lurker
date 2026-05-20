@@ -103,7 +103,7 @@
 
     <NetworkForm
       v-if="showNetworkForm"
-      :network="editingNetwork"
+      :network="editingNetwork ?? undefined"
       @close="closeNetworkForm"
     />
     <HighlightsModal
@@ -137,16 +137,17 @@
       @jump="onJumpToMessage"
     />
     <NickNoteModal
-      v-if="nickNotes.editor.open"
+      v-if="nickNotes.editor.open && nickNotes.editor.networkId != null"
       :nick="nickNotes.editor.nick"
       :network-id="nickNotes.editor.networkId"
     />
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { useBuffersStore } from '../stores/buffers.js';
+import type { Network } from '../stores/networks.js';
+import type { BufferLike } from '../composables/useBufferActions.js';
 import { useNetworksStore } from '../stores/networks.js';
 import { useSocket } from '../composables/useSocket.js';
 import { useVisualViewportHeight } from '../composables/useViewport.js';
@@ -170,7 +171,6 @@ import NickNoteModal from '../components/NickNoteModal.vue';
 import { useNickNotesStore } from '../stores/nickNotes.js';
 import { useJumpToMessage } from '../composables/useJumpToMessage.js';
 
-const buffers = useBuffersStore();
 const networks = useNetworksStore();
 const { connected } = useSocket();
 const { active, activeKey, activeBuf, isChannel, isServerBuffer, bufferLabel, topic, isSystemConsole } = useActiveBuffer();
@@ -202,10 +202,10 @@ const showChannelList = ref(false);
 const showUploads = ref(false);
 const showSearch = ref(false);
 const showNetworkForm = ref(false);
-const editingNetwork = ref(null);
-const pendingScrollId = ref(null);
-const messageInputRef = ref(null);
-const bufferCogBtn = ref(null);
+const editingNetwork = ref<Network | null>(null);
+const pendingScrollId = ref<number | null>(null);
+const messageInputRef = ref<{ focus: () => void } | null>(null);
+const bufferCogBtn = ref<HTMLElement | null>(null);
 
 // Server buffers already have a dedicated browse-channels action in the bar;
 // the cog is for channel/DM buffer-level actions (pin, always-notify).
@@ -213,7 +213,7 @@ const showBufferCog = computed(() => !!active.value && !isServerBuffer.value);
 
 function openBufferActions() {
   if (!activeBuf.value) return;
-  bufferActions.openMenuFromButton(activeBuf.value, bufferCogBtn.value);
+  bufferActions.openMenuFromButton(activeBuf.value as BufferLike, bufferCogBtn.value);
 }
 
 function openAddNetwork() {
@@ -222,7 +222,7 @@ function openAddNetwork() {
 }
 
 function editActiveNetwork() {
-  const net = active.value?.network;
+  const net = active.value?.network as Network | undefined;
   if (!net) return;
   editingNetwork.value = net;
   showNetworkForm.value = true;
@@ -253,8 +253,8 @@ watch(activeKey, (next) => {
 // belt-and-suspenders advance: if a row was hit and a buffer is active, go
 // to the buffer screen. Vue event bubbling runs BufferList's @click first,
 // so by the time we read activeKey it's already up to date.
-function onBufferListClick(e) {
-  const hit = e.target.closest('.channels li, .net-head');
+function onBufferListClick(e: MouseEvent) {
+  const hit = (e.target as Element).closest('.channels li, .net-head');
   if (!hit) return;
   if (activeKey.value) screen.value = 'buffer';
 }

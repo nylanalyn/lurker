@@ -13,8 +13,8 @@
     <p v-if="adminError" class="error inline">{{ adminError }}</p>
 
     <h3 class="subhead">members</h3>
-    <ul v-if="adminStore.users.length" class="device-list">
-      <li v-for="u in adminStore.users" :key="u.id" class="device user-row">
+    <ul v-if="users.length" class="device-list">
+      <li v-for="u in users" :key="u.id" class="device user-row">
         <span class="ua">
           {{ u.username }}
           <span v-if="u.role === 'admin'" class="role-tag">admin</span>
@@ -43,14 +43,14 @@
         <button class="link" @click="copyInviteUrl(lastCreatedInviteUrl)">copy</button>
       </span>
     </div>
-    <ul v-if="adminStore.invites.length" class="device-list">
-      <li v-for="inv in adminStore.invites" :key="inv.token" class="device invite-row">
+    <ul v-if="invites.length" class="device-list">
+      <li v-for="inv in invites" :key="inv.token" class="device invite-row">
         <span class="ua">
           <code class="invite-url">{{ inv.url }}</code>
           <span class="invite-status" :class="`status-${inv.status}`">{{ inv.status }}</span>
           <span v-if="inv.usedByUsername" class="invite-used"> → {{ inv.usedByUsername }}</span>
         </span>
-        <span class="last-seen" :title="inv.expiresAt">
+        <span class="last-seen" :title="inv.expiresAt ?? undefined">
           <template v-if="inv.status === 'consumed' && inv.usedAt">used {{ formatRelative(inv.usedAt) }}</template>
           <template v-else-if="inv.expiresAt">expires {{ formatRelative(inv.expiresAt) }}</template>
           <template v-else>no expiry</template>
@@ -73,22 +73,43 @@
   </section>
 </template>
 
-<script setup>
-import { ref, onMounted } from 'vue';
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue';
 import { useAuthStore } from '../../stores/auth.js';
 import { useAdminStore } from '../../stores/admin.js';
+import type { AdminUser, AdminInvite } from '../../stores/admin.js';
 import { formatRelative } from '../../utils/timestamp.js';
+
+// The store's AdminUser covers core fields; the server also returns `role`
+// and `lastSeenAt` which the template displays.
+interface AdminUserRow extends AdminUser {
+  role?: string;
+  lastSeenAt?: string | null;
+}
+
+// The store's AdminInvite covers core fields; the server also returns `url`,
+// `status`, and `usedByUsername`.
+interface AdminInviteRow extends AdminInvite {
+  url: string;
+  status: string;
+  usedByUsername?: string | null;
+}
 
 const auth = useAuthStore();
 const adminStore = useAdminStore();
+
+// The store types these as the base interfaces; cast to the extended rows that
+// include fields the server returns but the interfaces don't declare yet.
+const users = computed(() => adminStore.users as AdminUserRow[]);
+const invites = computed(() => adminStore.invites as AdminInviteRow[]);
 
 const adminError = ref('');
 const adminBusy = ref(false);
 const lastCreatedInviteUrl = ref('');
 
 onMounted(() => {
-  adminStore.fetchUsers().catch((e) => { adminError.value = e.message; });
-  adminStore.fetchInvites().catch((e) => { adminError.value = e.message; });
+  adminStore.fetchUsers().catch((e: any) => { adminError.value = e.message; });
+  adminStore.fetchInvites().catch((e: any) => { adminError.value = e.message; });
 });
 
 async function onCreateInvite() {
@@ -96,45 +117,45 @@ async function onCreateInvite() {
   adminBusy.value = true;
   lastCreatedInviteUrl.value = '';
   try {
-    const invite = await adminStore.createInvite();
+    const invite = await adminStore.createInvite() as AdminInviteRow;
     lastCreatedInviteUrl.value = invite.url;
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(invite.url).catch(() => { /* clipboard is best-effort */ });
     }
-  } catch (e) {
+  } catch (e: any) {
     adminError.value = e.message || 'failed to create invite';
   } finally {
     adminBusy.value = false;
   }
 }
 
-async function onRevokeInvite(invite) {
+async function onRevokeInvite(invite: AdminInviteRow) {
   if (!confirm(`Revoke this invite?`)) return;
   adminError.value = '';
   adminBusy.value = true;
   try {
     await adminStore.deleteInvite(invite.token);
-  } catch (e) {
+  } catch (e: any) {
     adminError.value = e.message || 'failed to revoke invite';
   } finally {
     adminBusy.value = false;
   }
 }
 
-async function onDeleteUser(user) {
+async function onDeleteUser(user: AdminUserRow) {
   if (!confirm(`Delete user ${user.username}? This is irreversible.`)) return;
   adminError.value = '';
   adminBusy.value = true;
   try {
     await adminStore.deleteUser(user.id);
-  } catch (e) {
+  } catch (e: any) {
     adminError.value = e.message || 'failed to delete user';
   } finally {
     adminBusy.value = false;
   }
 }
 
-function copyInviteUrl(url) {
+function copyInviteUrl(url: string) {
   if (navigator.clipboard?.writeText) {
     navigator.clipboard.writeText(url).catch(() => { /* ignore */ });
   }

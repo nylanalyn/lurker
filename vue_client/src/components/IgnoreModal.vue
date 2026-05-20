@@ -33,21 +33,25 @@
   </AppModal>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import AppModal from './AppModal.vue';
 import { useIgnoresStore } from '../stores/ignores.js';
 
-const props = defineProps({
-  nick: { type: String, required: true },
-  user: { type: String, default: null },
-  host: { type: String, default: null },
-  networkId: { type: Number, default: null },
+const props = withDefaults(defineProps<{
+  nick: string;
+  user?: string | null;
+  host?: string | null;
+  networkId?: number | null;
+}>(), {
+  user: null,
+  host: null,
+  networkId: null,
 });
-const emit = defineEmits(['close']);
+const emit = defineEmits<{ close: [] }>();
 
 const ignores = useIgnoresStore();
-const inputEl = ref(null);
+const inputEl = ref<HTMLInputElement | null>(null);
 
 // Default to a hostmask that hides the nick segment — IRCCloud convention.
 // If we don't have an observed user@host yet (member entered before WHO

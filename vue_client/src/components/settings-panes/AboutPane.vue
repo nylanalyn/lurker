@@ -32,7 +32,7 @@
   </section>
 </template>
 
-<script setup>
+<script setup lang="ts">
 // Build-time constant injected by vite.config.js (define).
 const appVersion = __APP_VERSION__;
 </script>

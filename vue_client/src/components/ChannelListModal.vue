@@ -68,10 +68,10 @@
   </AppModal>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, ref, onMounted, watch, onBeforeUnmount } from 'vue';
 import AppModal from './AppModal.vue';
-import { useChanlistStore, resultKey } from '../stores/chanlist.js';
+import { useChanlistStore, resultKey, type ChanlistRow } from '../stores/chanlist.js';
 import { useNetworksStore } from '../stores/networks.js';
 import { useBuffersStore } from '../stores/buffers.js';
 import { socketSend } from '../composables/useSocket.js';
@@ -80,24 +80,23 @@ import { formatRelative } from '../utils/timestamp.js';
 const PAGE_LIMIT = 200;
 const FILTER_DEBOUNCE_MS = 200;
 
-const props = defineProps({
-  networkId: { type: Number, required: true },
-});
-const emit = defineEmits(['close']);
+const props = defineProps<{ networkId: number }>();
+const emit = defineEmits<{ close: [] }>();
 
 const chanlist = useChanlistStore();
 const networks = useNetworksStore();
 const buffers = useBuffersStore();
 
-const filterEl = ref(null);
-const listEl = ref(null);
+const filterEl = ref<HTMLInputElement | null>(null);
+const listEl = ref<HTMLElement | null>(null);
 const filterInput = ref('');
-let filterTimer = null;
+let filterTimer: ReturnType<typeof setTimeout> | null = null;
 let prevInProgress = false;
 
 // Lazy-init the store entry so v-if/.rows reads don't return null.
 chanlist.ensure(props.networkId);
-const state = computed(() => chanlist.forNetwork(props.networkId));
+// ensure() guarantees forNetwork returns non-null; cast away the null.
+const state = computed(() => chanlist.forNetwork(props.networkId)!);
 
 // Seed the filter input from any prior session so reopening the modal doesn't
 // silently throw away a search the user had typed before they closed it.
@@ -117,7 +116,7 @@ const headerLabel = computed(() => {
   return '';
 });
 
-function sendSearch(offset) {
+function sendSearch(offset: number): void {
   const s = state.value;
   const key = resultKey({ query: s.query, sortBy: s.sortBy, sortDir: s.sortDir });
   chanlist.setLoading(props.networkId, true, key);
@@ -136,9 +135,9 @@ function refresh() {
   socketSend({ type: 'list-channels', networkId: props.networkId });
 }
 
-function setSort(key) {
+function setSort(key: string): void {
   const s = state.value;
-  let dir;
+  let dir: string;
   if (s.sortBy === key) {
     dir = s.sortDir === 'asc' ? 'desc' : 'asc';
   } else {
@@ -174,7 +173,7 @@ function onScroll() {
   if (dist < 240) sendSearch(s.rows.length);
 }
 
-function onJoin(ch) {
+function onJoin(ch: ChanlistRow): void {
   socketSend({ type: 'join', networkId: props.networkId, channel: ch.channel });
   buffers.activate(props.networkId, ch.channel);
   emit('close');

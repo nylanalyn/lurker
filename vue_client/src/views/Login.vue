@@ -91,11 +91,16 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
+import type { SetupStatus } from '../stores/auth.js';
 import { useAuthStore } from '../stores/auth.js';
 import WordBackdrop from '../components/WordBackdrop.vue';
+
+interface AuthMethods {
+  passkey: boolean;
+}
 
 const username = ref('');
 const password = ref('');
@@ -104,10 +109,10 @@ const loadingStatus = ref(true);
 const auth = useAuthStore();
 const router = useRouter();
 const route = useRoute();
-const setup = ref(null);
-const authMethods = ref({ passkey: false });
+const setup = ref<SetupStatus | null>(null);
+const authMethods = ref<AuthMethods>({ passkey: false });
 const showPasswordForm = ref(false);
-const loginMode = ref(null);
+const loginMode = ref<'passkey' | 'password' | null>(null);
 
 const submitLabel = computed(() => (working.value ? 'Creating account…' : 'Create account'));
 
@@ -124,8 +129,9 @@ onMounted(async () => {
   loadingStatus.value = false;
 });
 
-function nextDestination() {
-  return route.query.next || '/';
+function nextDestination(): string {
+  const next = route.query.next;
+  return (typeof next === 'string' && next) ? next : '/';
 }
 
 async function onLogin() {

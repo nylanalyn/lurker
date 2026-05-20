@@ -46,7 +46,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 // The 16-color palette here mirrors MIRC_PALETTE in utils/nickColor.js — those
 // are the only codes our renderer styles, so anything outside 0-15 wouldn't
 // round-trip visibly anyway.
@@ -61,11 +61,15 @@ const PALETTE = [
   { code: '14', hex: '#7f7f7f' }, { code: '15', hex: '#d2d2d2' },
 ];
 
-defineProps({
-  open: { type: Boolean, default: false },
-});
+withDefaults(defineProps<{
+  open?: boolean;
+}>(), { open: false });
 
-const emit = defineEmits(['color', 'reset', 'close']);
+const emit = defineEmits<{
+  color: [code: string];
+  reset: [];
+  close: [];
+}>();
 
 const swatches = PALETTE;
 </script>

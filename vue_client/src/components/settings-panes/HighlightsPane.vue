@@ -13,7 +13,7 @@
     </p>
     <p v-if="rulesError" class="error inline">{{ rulesError }}</p>
     <ul class="rule-list">
-      <li v-for="rule in rulesStore.rules" :key="rule.id" class="rule" :class="{ auto: rule.auto_managed }">
+      <li v-for="rule in rules" :key="rule.id" class="rule" :class="{ auto: rule.auto_managed }">
         <span class="lock" :title="rule.auto_managed ? 'auto-managed (network nick)' : 'user rule'">
           {{ rule.auto_managed ? '🔒' : '' }}
         </span>
@@ -22,13 +22,13 @@
           class="pattern"
           :value="rule.pattern"
           :disabled="rule.auto_managed"
-          @change="onRuleField(rule, 'pattern', $event.target.value)"
+          @change="onRuleField(rule, 'pattern', ($event.target as HTMLInputElement).value)"
           placeholder="pattern"
         />
         <select
           :value="rule.kind"
           :disabled="rule.auto_managed"
-          @change="onRuleField(rule, 'kind', $event.target.value)"
+          @change="onRuleField(rule, 'kind', ($event.target as HTMLSelectElement).value)"
         >
           <option value="plain">plain</option>
           <option value="glob">glob</option>
@@ -39,7 +39,7 @@
             type="checkbox"
             :checked="rule.case_sensitive"
             :disabled="rule.auto_managed"
-            @change="onRuleField(rule, 'case_sensitive', $event.target.checked)"
+            @change="onRuleField(rule, 'case_sensitive', ($event.target as HTMLInputElement).checked)"
           />
           <span>Aa</span>
         </label>
@@ -47,7 +47,7 @@
           <input
             type="checkbox"
             :checked="rule.enabled"
-            @change="onRuleField(rule, 'enabled', $event.target.checked)"
+            @change="onRuleField(rule, 'enabled', ($event.target as HTMLInputElement).checked)"
           />
           <span>{{ rule.enabled ? 'on' : 'off' }}</span>
         </label>
@@ -80,38 +80,52 @@
   </section>
 </template>
 
-<script setup>
-import { ref, onMounted } from 'vue';
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue';
 import { useHighlightRulesStore } from '../../stores/highlightRules.js';
+import type { HighlightRule } from '../../stores/highlightRules.js';
+
+// The store interface covers core fields; `kind` and `case_sensitive` are also
+// returned by the server but not yet typed in the shared interface.
+type RuleKind = 'plain' | 'glob' | 'regex';
+
+interface HighlightRuleRow extends HighlightRule {
+  kind: RuleKind;
+  case_sensitive: boolean;
+}
 
 const rulesStore = useHighlightRulesStore();
 
+// The store types rules as HighlightRule[], but the server also returns
+// `kind` and `case_sensitive`; cast here so the template can use those fields.
+const rules = computed(() => rulesStore.rules as HighlightRuleRow[]);
+
 const rulesError = ref('');
 const newPattern = ref('');
-const newKind = ref('plain');
+const newKind = ref<RuleKind>('plain');
 const newCaseSensitive = ref(false);
 
 onMounted(() => {
   if (!rulesStore.loaded) {
-    rulesStore.fetchAll().catch((e) => { rulesError.value = e.message; });
+    rulesStore.fetchAll().catch((e: any) => { rulesError.value = e.message; });
   }
 });
 
-async function onRuleField(rule, field, value) {
+async function onRuleField(rule: HighlightRuleRow, field: string, value: string | boolean) {
   rulesError.value = '';
   try {
     await rulesStore.update(rule.id, { [field]: value });
-  } catch (e) {
+  } catch (e: any) {
     rulesError.value = e.message || 'update failed';
     rulesStore.fetchAll().catch(() => { /* ignore */ });
   }
 }
 
-async function onRuleDelete(rule) {
+async function onRuleDelete(rule: HighlightRuleRow) {
   rulesError.value = '';
   try {
     await rulesStore.remove(rule.id);
-  } catch (e) {
+  } catch (e: any) {
     rulesError.value = e.message || 'delete failed';
   }
 }
@@ -121,16 +135,11 @@ async function onRuleAdd() {
   if (!pattern) return;
   rulesError.value = '';
   try {
-    await rulesStore.create({
-      pattern,
-      kind: newKind.value,
-      case_sensitive: newCaseSensitive.value,
-      enabled: true,
-    });
+    await rulesStore.create({ pattern, kind: newKind.value, case_sensitive: newCaseSensitive.value, enabled: true } as Partial<HighlightRuleRow>);
     newPattern.value = '';
     newKind.value = 'plain';
     newCaseSensitive.value = false;
-  } catch (e) {
+  } catch (e: any) {
     rulesError.value = e.message || 'create failed';
   }
 }

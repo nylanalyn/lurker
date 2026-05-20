@@ -27,19 +27,21 @@
   </AppModal>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import AppModal from './AppModal.vue';
 
-defineProps({
-  content: { type: String, required: true },
-  chunks: { type: Number, required: true },
-  uploading: { type: Boolean, default: false },
+withDefaults(defineProps<{
+  content: string;
+  chunks: number;
+  uploading?: boolean;
+}>(), {
+  uploading: false,
 });
 
-defineEmits(['confirm', 'cancel']);
+defineEmits<{ confirm: []; cancel: [] }>();
 
-const primaryBtn = ref(null);
+const primaryBtn = ref<HTMLButtonElement | null>(null);
 
 onMounted(() => {
   // Focus the primary action so Enter confirms, matching the user's intent

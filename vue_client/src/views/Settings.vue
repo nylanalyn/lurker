@@ -39,8 +39,9 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
+import type { Component } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useSettingsStore } from '../stores/settings.js';
 import { useAuthStore } from '../stores/auth.js';
@@ -70,7 +71,7 @@ const error = ref('');
 
 // One component per bespoke category. Registry-driven categories all share
 // RegistryPane and pick out their items by `categoryId` prop.
-const BESPOKE_PANES = {
+const BESPOKE_PANES: Record<string, Component> = {
   notifications: NotificationsPane,
   highlights: HighlightsPane,
   ignores: IgnoresPane,
@@ -88,9 +89,10 @@ const visibleCategories = computed(() =>
 
 const firstCategoryId = computed(() => visibleCategories.value[0]?.id || 'appearance');
 
-const activeCategoryId = computed(() => {
+const activeCategoryId = computed((): string => {
   const param = route.params.category;
-  if (param && visibleCategories.value.some((c) => c.id === param)) return param;
+  const id = Array.isArray(param) ? param[0] : param;
+  if (id && visibleCategories.value.some((c) => c.id === id)) return id;
   return firstCategoryId.value;
 });
 
@@ -117,7 +119,7 @@ watch(
   { immediate: true },
 );
 
-const contentEl = ref(null);
+const contentEl = ref<HTMLElement | null>(null);
 
 onMounted(() => {
   if (!settings.loaded) {

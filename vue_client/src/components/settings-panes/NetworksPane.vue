@@ -43,10 +43,11 @@
   </section>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, watch } from 'vue';
 import draggable from 'vuedraggable';
 import { useNetworksStore } from '../../stores/networks.js';
+import type { Network } from '../../stores/networks.js';
 
 const networks = useNetworksStore();
 
@@ -54,7 +55,7 @@ const networks = useNetworksStore();
 // array so the store's `networks` stays authoritative and the drag library can
 // freely splice. We refresh the mirror from the store unless the user is mid-
 // drag — that would yank rows out from under their cursor.
-const localOrder = ref([]);
+const localOrder = ref<Network[]>([]);
 const dragging = ref(false);
 
 function syncFromStore() {
@@ -81,7 +82,7 @@ async function onDragEnd() {
   error.value = '';
   try {
     await networks.reorder(ids);
-  } catch (err) {
+  } catch (err: any) {
     error.value = err?.message || 'failed to save order';
     syncFromStore();
   }

@@ -5,7 +5,14 @@ import { defineStore } from 'pinia';
 
 let nextId = 1;
 
-export type ToastKind = 'highlight' | 'dm' | 'always_notify' | 'notify' | 'info' | 'error';
+export type ToastKind =
+  | 'highlight'
+  | 'dm'
+  | 'always_notify'
+  | 'notify'
+  | 'info'
+  | 'warn'
+  | 'error';
 
 export interface Toast {
   id: number;

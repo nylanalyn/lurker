@@ -19,7 +19,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
 import { useSystemLogStore } from '../stores/systemLog.js';
 import { useSettingsStore } from '../stores/settings.js';
@@ -29,13 +29,13 @@ const systemLog = useSystemLogStore();
 const settings = useSettingsStore();
 
 const lines = computed(() => systemLog.lines);
-const tsFormat = computed(() => settings.effective('look.buffer.time_format') || 'HH:mm:ss');
+const tsFormat = computed(() => (settings.effective('look.buffer.time_format') as string) || 'HH:mm:ss');
 
-function formatTime(iso) {
-  return formatTimestamp(iso, tsFormat.value);
+function formatTime(iso: unknown) {
+  return formatTimestamp((iso as string) || '', tsFormat.value);
 }
 
-const scroller = ref(null);
+const scroller = ref<HTMLDivElement | null>(null);
 // Stick-to-bottom unless the user has scrolled away from the tail. Mirrors
 // the message-list pattern at a coarser granularity — we only care whether
 // the user is reading history or live.

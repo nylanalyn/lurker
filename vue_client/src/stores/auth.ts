@@ -12,7 +12,7 @@ import { resetSession } from '../composables/useSessionReset.js';
 export interface AuthUser {
   id: number;
   username: string;
-  isAdmin: boolean;
+  role: 'admin' | 'user';
 }
 
 export interface SetupStatus {

@@ -57,10 +57,26 @@
   </section>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import { useNetworksStore } from '../../stores/networks.js';
 import { useIgnoresStore } from '../../stores/ignores.js';
+
+interface IgnoreMask {
+  mask: string;
+  createdAt: string;
+}
+
+interface IgnoreGroup {
+  networkId: number;
+  networkName: string;
+  masks: IgnoreMask[];
+}
+
+interface NetworkOption {
+  id: number;
+  name: string;
+}
 
 const networksStore = useNetworksStore();
 const ignoresStore = useIgnoresStore();
@@ -69,14 +85,14 @@ const ignoresStore = useIgnoresStore();
 // { networkId, networkName, masks: [{mask, createdAt}, ...] }. We render
 // only networks that actually have entries (no empty groups); the add form
 // lets users pick any network they own.
-const ignoreGroups = computed(() => {
-  const byNet = new Map();
+const ignoreGroups = computed<IgnoreGroup[]>(() => {
+  const byNet = new Map<number, IgnoreMask[]>();
   for (const entry of ignoresStore.allEntries) {
     const list = byNet.get(entry.networkId);
     if (list) list.push({ mask: entry.mask, createdAt: entry.createdAt });
     else byNet.set(entry.networkId, [{ mask: entry.mask, createdAt: entry.createdAt }]);
   }
-  const groups = [];
+  const groups: IgnoreGroup[] = [];
   for (const [networkId, masks] of byNet) {
     groups.push({
       networkId,
@@ -87,13 +103,13 @@ const ignoreGroups = computed(() => {
   return groups.sort((a, b) => a.networkName.localeCompare(b.networkName));
 });
 
-const ignoreNetworkOptions = computed(() => {
+const ignoreNetworkOptions = computed<NetworkOption[]>(() => {
   return (networksStore.networks || [])
     .map((n) => ({ id: n.id, name: n.name }))
     .sort((a, b) => a.name.localeCompare(b.name));
 });
 
-const newIgnoreNetworkId = ref(null);
+const newIgnoreNetworkId = ref<number | null>(null);
 const newIgnoreMask = ref('');
 
 watch(
@@ -117,7 +133,7 @@ function onIgnoreAdd() {
   newIgnoreMask.value = '';
 }
 
-function onIgnoreRemove(networkId, mask) {
+function onIgnoreRemove(networkId: number, mask: string) {
   ignoresStore.removeMask(networkId, mask);
 }
 </script>

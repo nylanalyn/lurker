@@ -96,7 +96,7 @@
 
     <NetworkForm
       v-if="showNetworkForm"
-      :network="editingNetwork"
+      :network="editingNetwork ?? undefined"
       @close="closeNetworkForm"
     />
     <HighlightsModal
@@ -138,16 +138,18 @@
       @close="showKbdHelp = false"
     />
     <NickNoteModal
-      v-if="nickNotes.editor.open"
+      v-if="nickNotes.editor.open && nickNotes.editor.networkId != null"
       :nick="nickNotes.editor.nick"
       :network-id="nickNotes.editor.networkId"
     />
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, ref } from 'vue';
-import { useBuffersStore } from '../stores/buffers.js';
+import type { Network } from '../stores/networks.js';
+import type { BufferLike } from '../composables/useBufferActions.js';
+import type { Buffer } from '../stores/buffers.js';
 import { useNetworksStore } from '../stores/networks.js';
 import { useSocket } from '../composables/useSocket.js';
 import { useChatBootstrap } from '../composables/useChatBootstrap.js';
@@ -176,7 +178,6 @@ import { useNickNotesStore } from '../stores/nickNotes.js';
 import { useBufferActions } from '../composables/useBufferActions.js';
 import { useJumpToMessage } from '../composables/useJumpToMessage.js';
 
-const buffers = useBuffersStore();
 const networks = useNetworksStore();
 const { connected } = useSocket();
 const { active, activeBuf, topic, isServerBuffer, isChannel, bufferLabel, isSystemConsole } = useActiveBuffer();
@@ -190,7 +191,7 @@ const nickNotes = useNickNotesStore();
 const bufferActions = useBufferActions();
 
 const showNetworkForm = ref(false);
-const editingNetwork = ref(null);
+const editingNetwork = ref<Network | null>(null);
 const showHighlights = ref(false);
 const showBookmarks = ref(false);
 const showTopic = ref(false);
@@ -199,10 +200,10 @@ const showUploads = ref(false);
 const showSwitcher = ref(false);
 const showSearch = ref(false);
 const showKbdHelp = ref(false);
-const pendingScrollId = ref(null);
-const messageInputRef = ref(null);
-const messageListRef = ref(null);
-const bufferCogBtn = ref(null);
+const pendingScrollId = ref<number | null>(null);
+const messageInputRef = ref<{ focus: () => void } | null>(null);
+const messageListRef = ref<{ scrollByPage: (dir: number) => void } | null>(null);
+const bufferCogBtn = ref<HTMLElement | null>(null);
 
 // The cog opens the same menu as right-clicking the sidebar row — exposed
 // here so the actions are reachable for the currently-open buffer without a
@@ -213,7 +214,7 @@ const showBufferCog = computed(() => !!active.value && !isServerBuffer.value);
 
 function openBufferActions() {
   if (!activeBuf.value) return;
-  bufferActions.openMenuFromButton(activeBuf.value, bufferCogBtn.value);
+  bufferActions.openMenuFromButton(activeBuf.value as BufferLike, bufferCogBtn.value);
 }
 
 // Any modal open? Type-ahead must not steal focus from a modal's own fields.
@@ -244,7 +245,7 @@ const showChannels = computed(() => settings.effective('look.layout.show_channel
 // property of the channel, so the channel header is the natural home.
 const memberCount = computed(() => {
   if (!isChannel.value) return null;
-  return activeBuf.value?.members?.length ?? null;
+  return (activeBuf.value as Buffer | null)?.members?.length ?? null;
 });
 
 // Per-channel nicklist visibility. A channel the user has explicitly toggled
@@ -266,7 +267,7 @@ function toggleMembers() {
   if (!isChannel.value || !active.value) return;
   const { networkId, target } = active.value;
   // Pass the current visibility through as the new collapsed flag — it flips.
-  nicklistCollapse.setCollapsed(networkId, target, showMembers.value);
+  nicklistCollapse.setCollapsed(networkId, target, !!showMembers.value);
 }
 
 // Forward stray clicks anywhere in the chat frame (topic bar, message list,
@@ -274,8 +275,8 @@ function toggleMembers() {
 // excludes anything genuinely interactive — buttons, links, form controls,
 // and modal contents — and we bail if the user is in the middle of selecting
 // text so we don't kill their selection.
-function onChatClick(e) {
-  if (e.target.closest('button, a, input, textarea, select, label, .modal, [contenteditable=true]')) return;
+function onChatClick(e: MouseEvent) {
+  if ((e.target as Element).closest('button, a, input, textarea, select, label, .modal, [contenteditable=true]')) return;
   const sel = window.getSelection();
   if (sel && sel.toString().length > 0) return;
   messageInputRef.value?.focus();
@@ -287,7 +288,7 @@ function openAddNetwork() {
   editingNetwork.value = null;
   showNetworkForm.value = true;
 }
-function openEditNetwork(net) {
+function openEditNetwork(net: Network) {
   editingNetwork.value = net;
   showNetworkForm.value = true;
 }
@@ -297,7 +298,7 @@ function closeNetworkForm() {
 }
 
 function editActiveNetwork() {
-  const net = active.value?.network;
+  const net = active.value?.network as Network | undefined;
   if (net) openEditNetwork(net);
 }
 

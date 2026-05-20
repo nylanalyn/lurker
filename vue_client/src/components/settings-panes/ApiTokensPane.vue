@@ -78,15 +78,29 @@
   </section>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { api } from '../../api.js';
 import { formatRelative } from '../../utils/timestamp.js';
 
-const tokens = ref([]);
+interface ApiToken {
+  id: string;
+  name: string;
+  scope: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+}
+
+interface RevealedToken {
+  name: string;
+  token: string;
+}
+
+const tokens = ref<ApiToken[]>([]);
 const newName = ref('');
 const newAllowWrite = ref(false);
-const revealed = ref(null);
+const revealed = ref<RevealedToken | null>(null);
 const copied = ref(false);
 const busy = ref(false);
 const error = ref('');
@@ -98,7 +112,7 @@ async function refresh() {
   try {
     const { items } = await api('/api/api-tokens');
     tokens.value = items;
-  } catch (e) {
+  } catch (e: any) {
     error.value = e.message || 'failed to load tokens';
   }
 }
@@ -120,7 +134,7 @@ async function onCreate() {
     newName.value = '';
     newAllowWrite.value = false;
     await refresh();
-  } catch (e) {
+  } catch (e: any) {
     error.value = e.message || 'failed to create token';
   } finally {
     busy.value = false;
@@ -139,14 +153,14 @@ async function onCopy() {
   }
 }
 
-async function onRevoke(token) {
+async function onRevoke(token: ApiToken) {
   if (!confirm(`Revoke ${token.name}? Scripts using this token will lose access.`)) return;
   error.value = '';
   busy.value = true;
   try {
     await api(`/api/api-tokens/${token.id}`, { method: 'DELETE' });
     await refresh();
-  } catch (e) {
+  } catch (e: any) {
     error.value = e.message || 'revoke failed';
   } finally {
     busy.value = false;

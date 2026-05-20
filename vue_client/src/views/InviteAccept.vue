@@ -58,7 +58,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth.js';
@@ -67,7 +67,12 @@ const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 
-const status = ref(null);
+interface InviteStatus {
+  valid: boolean;
+  expired?: boolean;
+}
+
+const status = ref<InviteStatus | null>(null);
 const checking = ref(true);
 const username = ref('');
 const password = ref('');
@@ -83,7 +88,7 @@ const submitLabel = computed(() => (working.value ? 'Creating account…' : 'Cre
 
 onMounted(async () => {
   try {
-    status.value = await auth.fetchInviteStatus(route.params.token);
+    status.value = await auth.fetchInviteStatus(route.params.token as string);
   } catch (_) {
     status.value = { valid: false };
   } finally {
@@ -97,7 +102,7 @@ async function onAccept() {
   working.value = true;
   try {
     await auth.acceptInviteWithPassword({
-      token: route.params.token,
+      token: route.params.token as string,
       username: name,
       password: password.value,
     });

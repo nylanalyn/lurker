@@ -20,7 +20,7 @@
             type="text"
             :value="pk.label || ''"
             :placeholder="defaultPasskeyLabel(pk)"
-            @change="onRenamePasskey(pk, $event.target.value)"
+            @change="onRenamePasskey(pk, ($event.target as HTMLInputElement).value)"
           />
         </span>
         <span class="last-seen" :title="pk.lastUsedAt || pk.createdAt">
@@ -81,16 +81,26 @@
   </section>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../../stores/auth.js';
 import { formatRelative } from '../../utils/timestamp.js';
 
+// The auth store's Passkey interface covers the core fields; the server also
+// returns `backedUp` and `lastUsedAt` which the template displays.
+interface PasskeyRow {
+  id: string;
+  label: string | null;
+  createdAt: string;
+  lastUsedAt?: string | null;
+  backedUp?: boolean;
+}
+
 const auth = useAuthStore();
 const router = useRouter();
 
-const passkeys = ref([]);
+const passkeys = ref<PasskeyRow[]>([]);
 const passkeyError = ref('');
 const passkeyBusy = ref(false);
 const hasPassword = ref(false);
@@ -118,13 +128,13 @@ onMounted(() => {
 
 async function refreshPasskeys() {
   try {
-    passkeys.value = await auth.listPasskeys();
-  } catch (e) {
+    passkeys.value = await auth.listPasskeys() as PasskeyRow[];
+  } catch (e: any) {
     passkeyError.value = e.message || 'failed to load passkeys';
   }
 }
 
-function defaultPasskeyLabel(pk) {
+function defaultPasskeyLabel(pk: PasskeyRow): string {
   const where = pk.backedUp ? 'synced' : 'this device';
   return `passkey (${where})`;
 }
@@ -135,7 +145,7 @@ async function onAddPasskey() {
   try {
     await auth.addPasskey({});
     await refreshPasskeys();
-  } catch (e) {
+  } catch (e: any) {
     if (e.name !== 'NotAllowedError') {
       passkeyError.value = e.message || 'failed to add passkey';
     }
@@ -144,24 +154,24 @@ async function onAddPasskey() {
   }
 }
 
-async function onRenamePasskey(pk, label) {
+async function onRenamePasskey(pk: PasskeyRow, label: string) {
   passkeyError.value = '';
   try {
     await auth.renamePasskey(pk.id, label);
     await refreshPasskeys();
-  } catch (e) {
+  } catch (e: any) {
     passkeyError.value = e.message || 'rename failed';
   }
 }
 
-async function onRemovePasskey(pk) {
+async function onRemovePasskey(pk: PasskeyRow) {
   if (!confirm(`Remove ${pk.label || 'this passkey'}?`)) return;
   passkeyError.value = '';
   passkeyBusy.value = true;
   try {
     await auth.deletePasskey(pk.id);
     await refreshPasskeys();
-  } catch (e) {
+  } catch (e: any) {
     passkeyError.value = e.message || 'remove failed';
   } finally {
     passkeyBusy.value = false;
@@ -186,7 +196,7 @@ async function onSavePassword() {
     newPasswordInput.value = '';
     await refreshPasswordStatus();
     passwordNotice.value = 'Password saved.';
-  } catch (e) {
+  } catch (e: any) {
     passwordError.value = e.message || 'failed to save password';
   } finally {
     passwordBusy.value = false;
@@ -204,7 +214,7 @@ async function onRemovePassword() {
     newPasswordInput.value = '';
     await refreshPasswordStatus();
     passwordNotice.value = 'Password removed.';
-  } catch (e) {
+  } catch (e: any) {
     passwordError.value = e.message || 'failed to remove password';
   } finally {
     passwordBusy.value = false;

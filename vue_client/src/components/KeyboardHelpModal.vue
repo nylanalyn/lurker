@@ -23,18 +23,23 @@
   </AppModal>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue';
 import AppModal from './AppModal.vue';
 
-defineEmits(['close']);
+defineEmits<{ close: [] }>();
+
+interface ShortcutRow {
+  keys: string[];
+  label: string;
+}
 
 const isMac = typeof navigator !== 'undefined'
   && /mac|iphone|ipad|ipod/i.test(navigator.platform || navigator.userAgent || '');
 const MOD = isMac ? '⌘' : 'Ctrl';
 const ALT = isMac ? '⌥' : 'Alt';
 
-const shortcuts = computed(() => [
+const shortcuts = computed<ShortcutRow[]>(() => [
   { keys: [MOD, 'K'],            label: 'Jump to channel (quick switcher)' },
   { keys: [ALT, '↑'],            label: 'Previous channel (current network)' },
   { keys: [ALT, '↓'],            label: 'Next channel (current network)' },

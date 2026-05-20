@@ -35,7 +35,7 @@
       <select
         class="mobile-picker"
         :value="activeCategoryId"
-        @change="onPickCategory($event.target.value)"
+        @change="onPickCategory(($event.target as HTMLSelectElement).value)"
         aria-label="settings category"
       >
         <option v-for="cat in visibleCategories" :key="cat.id" :value="cat.id">
@@ -69,19 +69,20 @@
   </nav>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
+import type { SettingCategory } from '../../../shared/settingsRegistry.js';
 import { REGISTRY, CATEGORIES } from '../utils/settingsRegistry.js';
 
-const props = defineProps({
-  activeCategoryId: { type: String, required: true },
-  visibleCategories: { type: Array, required: true },
-});
+const props = defineProps<{
+  activeCategoryId: string;
+  visibleCategories: SettingCategory[];
+}>();
 
 const router = useRouter();
 const searchInput = ref('');
-const searchEl = ref(null);
+const searchEl = ref<HTMLInputElement | null>(null);
 
 const searchActive = computed(() => searchInput.value.trim().length > 0);
 
@@ -117,11 +118,20 @@ const searchResults = computed(() => {
   return out;
 });
 
-function onPickCategory(categoryId) {
+function onPickCategory(categoryId: string) {
   router.push({ name: 'settings', params: { category: categoryId } });
 }
 
-function onSelectResult(r) {
+interface SearchResult {
+  key: string;
+  label: string;
+  description: string;
+  categoryId: string;
+  categoryLabel: string;
+  score: number;
+}
+
+function onSelectResult(r: SearchResult) {
   // Navigate to the result's category and use the URL hash to point at the
   // specific row. The Settings shell watches the hash and scrolls the matching
   // [data-setting-key] element into view after the pane mounts.

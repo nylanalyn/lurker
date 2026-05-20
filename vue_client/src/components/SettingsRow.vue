@@ -28,8 +28,8 @@
       <label v-if="opt.type === 'bool'" class="bool">
         <input
           type="checkbox"
-          :checked="value"
-          @change="$emit('commit', $event.target.checked)"
+          :checked="!!value"
+          @change="$emit('commit', ($event.target as HTMLInputElement).checked)"
         />
         <span>{{ value ? 'on' : 'off' }}</span>
       </label>
@@ -39,27 +39,27 @@
         :min="opt.min"
         :max="opt.max"
         :value="value"
-        @change="$emit('commit', Number($event.target.value))"
+        @change="$emit('commit', Number(($event.target as HTMLInputElement).value))"
       />
       <select
         v-else-if="opt.type === 'enum'"
         :value="value"
-        @change="$emit('commit', $event.target.value)"
+        @change="$emit('commit', ($event.target as HTMLSelectElement).value)"
       >
         <option v-for="c in opt.choices" :key="c" :value="c">{{ c }}</option>
       </select>
       <span v-else-if="opt.type === 'color'" class="color-edit">
-        <span class="swatch" :style="{ background: value }"></span>
+        <span class="swatch" :style="{ background: value as string }"></span>
         <input
           type="text"
           :value="value"
-          @change="$emit('commit', $event.target.value)"
+          @change="$emit('commit', ($event.target as HTMLInputElement).value)"
         />
       </span>
       <textarea
         v-else-if="opt.type === 'string-list'"
-        :value="(value || []).join('\n')"
-        @change="$emit('commit', $event.target.value.split('\n').map(s => s.trim()).filter(Boolean))"
+        :value="(Array.isArray(value) ? value : []).join('\n')"
+        @change="$emit('commit', ($event.target as HTMLTextAreaElement).value.split('\n').map(s => s.trim()).filter(Boolean))"
         rows="6"
       ></textarea>
       <span v-else-if="opt.type === 'secret'" class="secret-edit">
@@ -68,7 +68,7 @@
           autocomplete="off"
           spellcheck="false"
           :value="value"
-          @change="$emit('commit', $event.target.value)"
+          @change="$emit('commit', ($event.target as HTMLInputElement).value)"
         />
         <button
           type="button"
@@ -80,7 +80,7 @@
         v-else
         type="text"
         :value="value"
-        @change="$emit('commit', $event.target.value)"
+        @change="$emit('commit', ($event.target as HTMLInputElement).value)"
       />
     </div>
     <div v-if="modified" class="default-line">
@@ -89,20 +89,27 @@
   </li>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue';
+import type { SettingOption, SettingValue } from '../../../shared/settingsRegistry.js';
 
-defineProps({
-  opt: { type: Object, required: true },
-  value: { default: undefined },
-  modified: { type: Boolean, default: false },
+withDefaults(defineProps<{
+  opt: SettingOption;
+  value?: SettingValue;
+  modified?: boolean;
+}>(), {
+  value: undefined,
+  modified: false,
 });
 
-defineEmits(['commit', 'reset']);
+defineEmits<{
+  commit: [value: SettingValue];
+  reset: [];
+}>();
 
 const revealed = ref(false);
 
-function formatDefault(opt) {
+function formatDefault(opt: SettingOption): string {
   const v = opt.default;
   if (Array.isArray(v)) return v.join(', ');
   if (typeof v === 'boolean') return v ? 'on' : 'off';

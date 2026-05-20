@@ -24,7 +24,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, ref, onMounted, onBeforeUnmount } from 'vue';
 import { useNetworksStore } from '../stores/networks.js';
 import { useBuffersStore } from '../stores/buffers.js';
@@ -37,15 +37,15 @@ import { useSelfLabel } from '../composables/useSelfLabel.js';
 import { formatTimestamp } from '../utils/timestamp.js';
 import { isPeerOffline, isPeerAway } from '../utils/peerPresence.js';
 
-defineProps({
+withDefaults(defineProps<{
   // Mobile/petite mode: drops the clock and buffer-name segments entirely
   // (the buffer name is already in the mobile header, the clock isn't worth
   // the row), and renders the self identity (nick + channel-prefix + user
   // modes + away) here instead — freeing the input row to be just `>`,
   // textarea, and the paperclip. Also hides lag and the "new ↓" jump button
   // so the typing/split/upload signals stay legible at phone widths.
-  compact: { type: Boolean, default: false },
-});
+  compact?: boolean;
+}>(), { compact: false });
 
 const networks = useNetworksStore();
 const buffers = useBuffersStore();
@@ -116,23 +116,29 @@ const isDmBuffer = computed(() =>
 const peerForActive = computed(() => {
   if (!isDmBuffer.value) return null;
   const a = active.value;
+  if (!a) return null;
   return networks.states[a.networkId]?.peerPresence?.[a.target.toLowerCase()] || null;
 });
 const peerStatusLabel = computed(() => {
   const peer = peerForActive.value;
   if (!peer) return '';
-  if (isPeerOffline(peer)) return `${active.value.target} is offline`;
-  if (isPeerAway(peer)) {
-    return peer.awayMessage
-      ? `${active.value.target} is away: ${peer.awayMessage}`
-      : `${active.value.target} is away`;
+  const a = active.value;
+  if (!a) return '';
+  // Cast through unknown to satisfy PeerPresenceRow's `state?: string` vs PeerPresenceEntry's `state: string | null`.
+  const p = peer as { state?: string; awayMessage?: string | null };
+  if (isPeerOffline(p)) return `${a.target} is offline`;
+  if (isPeerAway(p)) {
+    return p.awayMessage
+      ? `${a.target} is away: ${p.awayMessage}`
+      : `${a.target} is away`;
   }
   return '';
 });
 const peerStatusClass = computed(() => {
   const peer = peerForActive.value;
   if (!peer) return '';
-  return isPeerOffline(peer) ? 'offline' : 'away';
+  const p = peer as { state?: string };
+  return isPeerOffline(p) ? 'offline' : 'away';
 });
 
 const typingNicks = computed(() => {
@@ -141,17 +147,18 @@ const typingNicks = computed(() => {
   return Object.keys(t);
 });
 
-function nickSeg(nick) {
+function nickSeg(nick: string): { text: string; color: string | null } {
   return { text: nick, color: nickColors.color(nick) };
 }
 
+const sep = (s: string): { text: string; color: null } => ({ text: s, color: null });
 const typingSegments = computed(() => {
   const list = typingNicks.value;
   if (list.length === 0) return [];
   if (list.length === 1) return [nickSeg(list[0])];
-  if (list.length === 2) return [nickSeg(list[0]), { text: ', ' }, nickSeg(list[1])];
-  if (list.length === 3) return [nickSeg(list[0]), { text: ', ' }, nickSeg(list[1]), { text: ', ' }, nickSeg(list[2])];
-  return [nickSeg(list[0]), { text: ', ' }, nickSeg(list[1]), { text: `, +${list.length - 2}` }];
+  if (list.length === 2) return [nickSeg(list[0]), sep(', '), nickSeg(list[1])];
+  if (list.length === 3) return [nickSeg(list[0]), sep(', '), nickSeg(list[1]), sep(', '), nickSeg(list[2])];
+  return [nickSeg(list[0]), sep(', '), nickSeg(list[1]), sep(`, +${list.length - 2}`)];
 });
 
 const lagMs = computed(() => {
@@ -165,8 +172,8 @@ const lagMs = computed(() => {
 // unless the user has opted into always-show. Above the threshold we render the
 // raw value (no "lag: " prefix), warn-colored normally and bad-colored once the
 // alarm threshold is crossed so a real spike is impossible to miss.
-const lagMinShowMs = computed(() => settings.effective('look.bar.lag_min_show_ms'));
-const lagAlarmMs = computed(() => settings.effective('look.bar.lag_alarm_ms'));
+const lagMinShowMs = computed(() => settings.effective('look.bar.lag_min_show_ms') as number);
+const lagAlarmMs = computed(() => settings.effective('look.bar.lag_alarm_ms') as number);
 const lagAlwaysShow = computed(() => settings.effective('look.bar.lag_always_show'));
 
 const lagLabel = computed(() => {
@@ -187,10 +194,10 @@ const lagClass = computed(() => {
 
 // Clock lives in the status bar now. Same 1s tick + same format setting as
 // the input bar used to have, so existing look.bar.time_format keeps working.
-const tsFormat = computed(() => settings.effective('look.bar.time_format') || 'HH:mm:ss');
+const tsFormat = computed(() => (settings.effective('look.bar.time_format') as string) || 'HH:mm:ss');
 const now = ref(new Date());
-let clockTimer = null;
-let clockAlignTimeout = null;
+let clockTimer: ReturnType<typeof setInterval> | null = null;
+let clockAlignTimeout: ReturnType<typeof setTimeout> | null = null;
 // Align the first tick to the next wall-clock second boundary before
 // kicking off the 1s interval. Without this, the displayed second can be
 // up to ~999ms behind any NTP-synced clock — we tick from whatever

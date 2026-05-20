@@ -8,8 +8,8 @@
     <p v-if="uploads.listError" class="error">{{ uploads.listError }}</p>
 
     <div ref="listEl" class="list-wrap" @scroll="onScroll">
-      <ul v-if="uploads.recent.length" class="list">
-        <li v-for="u in uploads.recent" :key="u.id" class="row">
+      <ul v-if="recentRows.length" class="list">
+        <li v-for="u in recentRows" :key="u.id" class="row">
           <a :href="u.url" target="_blank" rel="noreferrer noopener" class="thumb-link" :title="u.url">
             <img v-if="u.thumbnail_url" :src="u.thumbnail_url" class="thumb" alt="" loading="lazy" />
             <div v-else class="thumb thumb-placeholder">
@@ -40,16 +40,31 @@
   </AppModal>
 </template>
 
-<script setup>
-import { onMounted, ref } from 'vue';
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue';
 import AppModal from './AppModal.vue';
 import { useUploadsStore } from '../stores/uploads.js';
+import type { UploadItem } from '../stores/uploads.js';
 import { formatRelative } from '../utils/timestamp.js';
 
-const emit = defineEmits(['close']);
+// The server response can include extra metadata fields not tracked in the
+// store's base UploadItem shape (they come from the GET /api/uploads list).
+interface UploadRow extends UploadItem {
+  created_at?: string;
+  byte_size?: number;
+  width?: number;
+  height?: number;
+}
+
+const emit = defineEmits<{
+  close: [];
+}>();
 const uploads = useUploadsStore();
-const listEl = ref(null);
-const copiedId = ref(null);
+// Cast the store's UploadItem[] to UploadRow[] so the template can access
+// the server-supplied extra fields (created_at, byte_size, width, height).
+const recentRows = computed(() => uploads.recent as UploadRow[]);
+const listEl = ref<HTMLDivElement | null>(null);
+const copiedId = ref<number | null>(null);
 
 onMounted(() => {
   uploads.loadRecent().catch(() => { /* surfaced via store.listError */ });
@@ -63,12 +78,12 @@ function onScroll() {
   }
 }
 
-function onInsert(u) {
+function onInsert(u: UploadRow) {
   uploads.requestInsert(u.url);
   emit('close');
 }
 
-async function onCopy(u) {
+async function onCopy(u: UploadRow) {
   try {
     await navigator.clipboard.writeText(u.url);
     copiedId.value = u.id;
@@ -81,11 +96,11 @@ async function onCopy(u) {
   }
 }
 
-async function onDelete(u) {
+async function onDelete(u: UploadRow) {
   try { await uploads.remove(u.id); } catch (_) { /* listError set */ }
 }
 
-function formatBytes(n) {
+function formatBytes(n: number) {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;

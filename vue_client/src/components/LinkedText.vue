@@ -18,8 +18,10 @@
   </template>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue';
+import type { CSSProperties } from 'vue';
+import type { RenderSegment } from '../utils/nickColor.js';
 import { splitTextByTokens, segmentInlineStyle, segmentHasStyle } from '../utils/nickColor.js';
 
 // Renders a plain-text string with URLs auto-linked and IRC formatting
@@ -28,11 +30,11 @@ import { splitTextByTokens, segmentInlineStyle, segmentHasStyle } from '../utils
 // errors, part reasons, etc.) and by the topic bar in Chat.vue. Lines that
 // DO get nick coloring (message/notice/action) call splitTextByTokens
 // directly with a real nickSet.
-const props = defineProps({
-  text: { type: String, default: '' },
-});
+const props = withDefaults(defineProps<{
+  text?: string;
+}>(), { text: '' });
 
 const segments = computed(() => splitTextByTokens(props.text, null, null, null));
-function styleFor(seg) { return segmentInlineStyle(seg, null); }
-function hasStyle(seg) { return segmentHasStyle(seg); }
+function styleFor(seg: RenderSegment): CSSProperties { return segmentInlineStyle(seg, null) as CSSProperties; }
+function hasStyle(seg: RenderSegment) { return segmentHasStyle(seg); }
 </script>

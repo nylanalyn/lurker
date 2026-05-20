@@ -33,27 +33,27 @@
   </AppModal>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import AppModal from './AppModal.vue';
 import { useNickNotesStore } from '../stores/nickNotes.js';
 import { formatDateTime } from '../utils/timestamp.js';
 
-const props = defineProps({
-  nick: { type: String, required: true },
-  networkId: { type: Number, required: true },
-});
+const props = defineProps<{
+  nick: string;
+  networkId: number;
+}>();
 
 const MAX_LEN = 4096;
 const nickNotes = useNickNotesStore();
-const inputEl = ref(null);
+const inputEl = ref<HTMLTextAreaElement | null>(null);
 
 const entry = computed(() => nickNotes.entryFor(props.networkId, props.nick));
 const initial = computed(() => entry.value?.note || '');
 const draft = ref(initial.value);
 const dirty = computed(() => draft.value !== initial.value);
 const hasExistingNote = computed(() => !!entry.value?.note);
-const formattedUpdatedAt = computed(() => formatDateTime(entry.value?.updatedAt));
+const formattedUpdatedAt = computed(() => formatDateTime(entry.value?.updatedAt ?? ''));
 
 function confirm() {
   if (!dirty.value) return;

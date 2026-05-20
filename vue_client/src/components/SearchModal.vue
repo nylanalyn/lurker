@@ -41,14 +41,19 @@
   </AppModal>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref, watch, nextTick } from 'vue';
 import AppModal from './AppModal.vue';
 import HistoryMessageRow from './HistoryMessageRow.vue';
 import { useSearchStore } from '../stores/search.js';
+import type { SearchResult } from '../stores/search.js';
 import { useIgnoresStore } from '../stores/ignores.js';
+import type { HistoryMessage } from './HistoryMessageRow.vue';
 
-const emit = defineEmits(['close', 'jump']);
+const emit = defineEmits<{
+  close: [];
+  jump: [payload: { networkId: number; target: string; messageId: number }];
+}>();
 
 const store = useSearchStore();
 const ignores = useIgnoresStore();
@@ -57,11 +62,11 @@ const ignores = useIgnoresStore();
 // filtered after results arrive so /unignore restores the rows without
 // re-issuing the query.
 const visibleResults = computed(() =>
-  store.results.filter((m) => !ignores.isIgnored(m.networkId, m.nick, m.userhost))
+  store.results.filter((m) => !ignores.isIgnored(m.networkId, m.nick, (m as any).userhost ?? ''))
 );
 
-const inputEl = ref(null);
-const listEl = ref(null);
+const inputEl = ref<HTMLInputElement | null>(null);
+const listEl = ref<HTMLUListElement | null>(null);
 // Hydrated from the store on mount so a closed-then-reopened modal lands
 // on the same row the user was last on. Mirrored back into the store on
 // unmount.
@@ -70,7 +75,7 @@ const selected = ref(store.selectedIndex);
 // Local mirror of the store's raw query so we can debounce dispatch without
 // debouncing the text field itself.
 const queryInput = ref(store.query);
-let debounceTimer = null;
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 watch(queryInput, (val) => {
   store.setQuery(val);
   if (debounceTimer) clearTimeout(debounceTimer);
@@ -90,8 +95,9 @@ watch(() => visibleResults.value.length, (len, prev) => {
   if (selected.value >= len) selected.value = len - 1;
 });
 
-function onJump(m) {
-  emit('jump', { networkId: m.networkId, target: m.target, messageId: m.id });
+function onJump(m: HistoryMessage | SearchResult) {
+  const id = typeof m.id === 'number' ? m.id : 0;
+  emit('jump', { networkId: m.networkId, target: m.target, messageId: id });
   emit('close');
 }
 
@@ -103,7 +109,7 @@ function scrollSelectedIntoView() {
   });
 }
 
-function onKeydown(e) {
+function onKeydown(e: KeyboardEvent) {
   const rows = visibleResults.value;
   if (e.key === 'ArrowDown') {
     e.preventDefault();

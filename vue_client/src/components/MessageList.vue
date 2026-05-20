@@ -17,7 +17,7 @@
       — away<template v-if="row.awayMessage">: {{ row.awayMessage }}</template> —
     </div>
     <div v-else-if="row.divider === 'back'" class="notice presence-divider">
-      — back (gone {{ formatDuration(row.awayAt, row.backAt) }}) —
+      — back (gone {{ formatDuration(row.awayAt ?? '', row.backAt ?? '') }}) —
     </div>
     <div v-else-if="row.divider === 'date'" class="notice date-divider">{{ row.dateStr }}</div>
     <div
@@ -35,8 +35,8 @@
           ><template v-for="(item, ii) in g.visible" :key="ii"
             ><template v-if="ii > 0">{{ ii === g.visible.length - 1 && g.hidden === 0 ? ' and ' : ', ' }}</template
             ><template v-if="g.kind === 'renamed'"
-              ><NickRef :nick="item.from" /> → <NickRef :nick="item.to" /></template
-            ><template v-else><NickRef :nick="item.nick" /></template
+              ><NickRef :nick="asRename(item).from" /> → <NickRef :nick="asRename(item).to" /></template
+            ><template v-else><NickRef :nick="asNick(item).nick" /></template
           ></template
           ><template v-if="g.hidden > 0">, and {{ g.hidden }} {{ g.hidden === 1 ? 'other' : 'others' }}</template
           ><template v-if="g.kind === 'joined'"> joined</template
@@ -50,18 +50,18 @@
       v-else
       class="line"
       :class="[rowClass(row), { actionable: eligibleForActions(row.m) }]"
-      :data-msg-id="row.m.id ?? null"
+      :data-msg-id="row.m?.id ?? null"
       @contextmenu="onLineContextMenu($event, row.m)"
       v-bind="longPressBind(row.m)"
     >
-      <template v-if="compactMode && row.m.type === 'message'">
+      <template v-if="compactMode && row.m?.type === 'message'">
         <!-- Compact-mode message rows (IRCCloud-style): nick on its own
              head line above the body; body row carries the body and a
              right-aligned timestamp. The head is omitted entirely on
              author continuations so a run of same-author messages reads
              as one block, but every body row still shows its own time. -->
         <div v-if="!row.continuationAuthor" class="head">
-          <span class="prefix" :class="prefixClass(row.m)" :style="prefixStyle(row.m)">{{ row.m.nick }}</span>
+          <span class="prefix" :class="prefixClass(row.m)" :style="prefixStyle(row.m)">{{ row.m?.nick }}</span>
         </div>
         <span class="body" :class="bodyClass(row.m)">
           <template v-for="(seg, j) in textSegments(row.m)" :key="j">
@@ -77,10 +77,10 @@
             <template v-else>{{ seg.text }}</template>
           </template>
         </span>
-        <span class="time">{{ row.continuationTime ? '' : time(row.m.time) }}</span>
+        <span class="time">{{ row.continuationTime ? '' : time(row.m?.time) }}</span>
       </template>
       <template v-else>
-        <span class="time">{{ row.continuationTime ? '' : time(row.m.time) }}</span>
+        <span class="time">{{ row.continuationTime ? '' : time(row.m?.time) }}</span>
         <span
           class="prefix"
           :class="prefixClass(row.m)"
@@ -101,15 +101,15 @@
               <template v-else>{{ seg.text }}</template>
             </template>
           </template>
-          <template v-else-if="row.m.type === 'join'"><NickRef :nick="row.m.nick" /> joined</template>
-          <template v-else-if="row.m.type === 'part'"><NickRef :nick="row.m.nick" /> left<template v-if="row.m.text"> (<LinkedText :text="row.m.text" />)</template></template>
-          <template v-else-if="row.m.type === 'quit'"><NickRef :nick="row.m.nick" /> quit<template v-if="row.m.text"> (<LinkedText :text="row.m.text" />)</template></template>
-          <template v-else-if="row.m.type === 'kick'"><NickRef :nick="row.m.kicked" /> kicked by <NickRef :nick="row.m.nick" /><template v-if="row.m.text"> (<LinkedText :text="row.m.text" />)</template></template>
-          <template v-else-if="row.m.type === 'nick'"><NickRef :nick="row.m.nick" /> is now <NickRef :nick="row.m.newNick" /></template>
-          <template v-else-if="row.m.type === 'mode'">mode by <NickRef :nick="row.m.nick" /><template v-if="row.m.text">: <LinkedText :text="row.m.text" /></template></template>
-          <template v-else-if="row.m.type === 'topic'">topic set by <NickRef :nick="row.m.nick" /><template v-if="row.m.text">: <LinkedText :text="row.m.text" /></template></template>
-          <template v-else-if="row.m.type === 'motd'"><LinkedText :text="row.m.text" /></template>
-          <template v-else-if="row.m.type === 'error'"><LinkedText :text="row.m.text" /></template>
+          <template v-else-if="row.m?.type === 'join'"><NickRef :nick="row.m.nick ?? ''" /> joined</template>
+          <template v-else-if="row.m?.type === 'part'"><NickRef :nick="row.m.nick ?? ''" /> left<template v-if="row.m.text"> (<LinkedText :text="row.m.text" />)</template></template>
+          <template v-else-if="row.m?.type === 'quit'"><NickRef :nick="row.m.nick ?? ''" /> quit<template v-if="row.m.text"> (<LinkedText :text="row.m.text" />)</template></template>
+          <template v-else-if="row.m?.type === 'kick'"><NickRef :nick="row.m.kicked ?? ''" /> kicked by <NickRef :nick="row.m.nick ?? ''" /><template v-if="row.m.text"> (<LinkedText :text="row.m.text" />)</template></template>
+          <template v-else-if="row.m?.type === 'nick'"><NickRef :nick="row.m.nick ?? ''" /> is now <NickRef :nick="row.m.newNick ?? ''" /></template>
+          <template v-else-if="row.m?.type === 'mode'">mode by <NickRef :nick="row.m.nick ?? ''" /><template v-if="row.m.text">: <LinkedText :text="row.m.text" /></template></template>
+          <template v-else-if="row.m?.type === 'topic'">topic set by <NickRef :nick="row.m.nick ?? ''" /><template v-if="row.m.text">: <LinkedText :text="row.m.text" /></template></template>
+          <template v-else-if="row.m?.type === 'motd'"><LinkedText :text="row.m.text ?? ''" /></template>
+          <template v-else-if="row.m?.type === 'error'"><LinkedText :text="row.m.text ?? ''" /></template>
         </span>
       </template>
       <button
@@ -134,8 +134,9 @@
   />
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
+import type { CSSProperties } from 'vue';
 import { useNetworksStore } from '../stores/networks.js';
 import { useBuffersStore } from '../stores/buffers.js';
 import { useSettingsStore } from '../stores/settings.js';
@@ -149,19 +150,73 @@ import {
   resetScrollState,
   useScrollState,
 } from '../composables/useScrollState.js';
+import type { RenderSegment } from '../utils/nickColor.js';
 import { segmentInlineStyle, segmentHasStyle } from '../utils/nickColor.js';
 import { formatTimestamp, formatDuration, formatDate, formatDayLabel } from '../utils/timestamp.js';
 import { consolidateRows } from '../utils/consolidate.js';
+import type { ConsolidationGroup, NickEntry, RenameEntry } from '../../../shared/consolidate.js';
 import { collapseDisplay } from '../utils/collapseDisplay.js';
 import NickRef from './NickRef.vue';
 import LinkedText from './LinkedText.vue';
 import IgnoreModal from './IgnoreModal.vue';
 import { useMessageActions } from '../composables/useMessageActions.js';
+import type { MessageContext } from '../composables/useMessageActions.js';
 import { useLongPress } from '../composables/useLongPress.js';
 
-const props = defineProps({
-  pendingScrollId: { type: [Number, String, null], default: null },
-});
+// Extended BufferMessage fields accessed in the template and script
+// (beyond the core BufferMessage definition which uses [key: string]: unknown).
+interface ChatMessage {
+  id?: number | null;
+  networkId: number;
+  target: string;
+  type: string;
+  nick?: string;
+  text?: string;
+  time?: string;
+  self?: boolean;
+  alt?: boolean;
+  matched?: unknown;
+  newNick?: string;
+  kicked?: string;
+  userhost?: string;
+  [key: string]: unknown;
+}
+
+// A row emitted by renderRows — either a real message row, a consolidation
+// summary, or a divider marker.
+interface RenderRow {
+  // Message row
+  m?: ChatMessage;
+  alt?: boolean;
+  key: string | number;
+  // Divider row
+  divider?: string;
+  dateStr?: string;
+  awayMessage?: string;
+  awayAt?: string;
+  backAt?: string;
+  // Consolidation row (from consolidateRows)
+  consolidation?: boolean;
+  groups?: ConsolidationGroup[];
+  time?: string;
+  firstId?: number | string | null;
+  lastId?: number | string | null;
+  // Display-collapsing tags (mutated by collapseDisplay)
+  continuationAuthor?: boolean;
+  continuationTime?: boolean;
+}
+
+// Ignore-confirm modal target
+interface IgnoreTarget {
+  nick?: string;
+  user: string | null;
+  host: string | null;
+  networkId?: number;
+}
+
+const props = withDefaults(defineProps<{
+  pendingScrollId?: number | string | null;
+}>(), { pendingScrollId: null });
 
 const networks = useNetworksStore();
 const buffers = useBuffersStore();
@@ -181,7 +236,7 @@ const tsFormat = computed(() => settings.effective(
   compactMode.value ? 'look.buffer.time_format_compact' : 'look.buffer.time_format',
 ));
 
-const scroller = ref(null);
+const scroller = ref<HTMLElement | null>(null);
 const stickToBottom = ref(true);
 const { scrollToBottomToken } = useScrollState();
 
@@ -194,9 +249,9 @@ const selfLower = computed(() => {
   return sn ? sn.toLowerCase() : null;
 });
 
-const nickSet = computed(() => {
+const nickSet = computed((): Set<string> => {
   const b = buffer.value;
-  const set = new Set();
+  const set = new Set<string>();
   if (!b) return set;
   for (const mem of (b.members || [])) {
     const n = typeof mem === 'string' ? mem : mem.nick;
@@ -210,16 +265,17 @@ const nickSet = computed(() => {
   return set;
 });
 
-function time(iso) {
-  return formatTimestamp(iso, tsFormat.value);
+function time(iso: string | undefined): string {
+  return formatTimestamp(iso ?? '', tsFormat.value as string ?? '');
 }
 
-function rowClass(row) {
+function rowClass(row: RenderRow) {
+  const m = row.m;
   return {
-    [`type-${row.m.type}`]: true,
-    self: row.m.self,
+    [`type-${m?.type}`]: true,
+    self: m?.self,
     alt: row.alt,
-    highlight: !!row.m.matched,
+    highlight: !!m?.matched,
     'cont-author': !!row.continuationAuthor,
     'cont-time': !!row.continuationTime,
   };
@@ -232,14 +288,14 @@ function rowClass(row) {
 // in (mirrors MemberList's pattern).
 const messageActions = useMessageActions();
 const longPress = useLongPress();
-const ignoreTarget = ref(null);
+const ignoreTarget = ref<IgnoreTarget | null>(null);
 
-function eligibleForActions(m) {
+function eligibleForActions(m: ChatMessage | undefined | null): boolean {
   if (!m || m.id == null) return false;
   return m.type === 'message' || m.type === 'action' || m.type === 'notice';
 }
 
-function parseUserHost(userhost) {
+function parseUserHost(userhost: string | null | undefined): { user: string | null; host: string | null } {
   if (!userhost) return { user: null, host: null };
   // Format is nick!user@host; tolerate missing pieces.
   const bang = userhost.indexOf('!');
@@ -250,9 +306,9 @@ function parseUserHost(userhost) {
   return { user: rest.slice(0, at) || null, host: rest.slice(at + 1) || null };
 }
 
-function menuContext(m) {
+function menuContext(m: ChatMessage): MessageContext {
   return {
-    networkId: buffer.value?.networkId,
+    networkId: buffer.value?.networkId ?? 0,
     onIgnore: (msg) => {
       const { user, host } = parseUserHost(msg.userhost);
       ignoreTarget.value = {
@@ -265,41 +321,45 @@ function menuContext(m) {
   };
 }
 
-function onLineContextMenu(e, m) {
+function onLineContextMenu(e: MouseEvent, m: ChatMessage | undefined) {
   if (!eligibleForActions(m)) return;
   e.preventDefault();
-  messageActions.openMenuFor(m, menuContext(m), e.clientX, e.clientY);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  messageActions.openMenuFor(m as any, menuContext(m!), e.clientX, e.clientY);
 }
 
-function onActionsClick(e, m) {
+function onActionsClick(e: MouseEvent, m: ChatMessage | undefined) {
   if (!eligibleForActions(m)) return;
-  messageActions.openMenuFromButton(m, menuContext(m), e.currentTarget);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  messageActions.openMenuFromButton(m as any, menuContext(m!), (e.currentTarget as Element) || null);
 }
 
 // Touch long-press → same menu. Eligibility is rechecked inside the callback
 // so the timer set on touchstart of an ineligible row (rare, the v-bind only
 // emits handlers for eligible rows) is a no-op. The bind() factory threads
 // the message through to the callback as the payload arg.
-function longPressBind(m) {
+function longPressBind(m: ChatMessage | undefined) {
   if (!eligibleForActions(m)) return null;
   return longPress.bind((coords, msg) => {
-    messageActions.openMenuFor(msg, menuContext(msg), coords.clientX, coords.clientY);
-  }, m);
+    if (!msg) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    messageActions.openMenuFor(msg as any, menuContext(msg), coords.clientX, coords.clientY);
+  }, m as ChatMessage);
 }
 
 const smartFilterEnabled = computed(() => !!settings.effective('chat.smart_filter'));
-const smartFilterDelayMs = computed(() => (settings.effective('chat.smart_filter_delay') || 0) * 60_000);
-const smartFilterUnmaskMs = computed(() => (settings.effective('chat.smart_filter_join_unmask') || 0) * 60_000);
+const smartFilterDelayMs = computed(() => ((settings.effective('chat.smart_filter_delay') as number) || 0) * 60_000);
+const smartFilterUnmaskMs = computed(() => ((settings.effective('chat.smart_filter_join_unmask') as number) || 0) * 60_000);
 const smartFilterJoin = computed(() => !!settings.effective('chat.smart_filter_join'));
 const smartFilterQuit = computed(() => !!settings.effective('chat.smart_filter_quit'));
 const smartFilterNick = computed(() => !!settings.effective('chat.smart_filter_nick'));
 
 const consolidateEnabled = computed(() => !!settings.effective('chat.consolidate_joins'));
-const consolidateMaxNames = computed(() => settings.effective('chat.consolidate_max_names') || 5);
+const consolidateMaxNames = computed(() => (settings.effective('chat.consolidate_max_names') as number) || 5);
 
 const collapseAuthorsEnabled = computed(() => !!settings.effective('look.message.collapse_authors'));
 const collapseAuthorsWindowMs = computed(() =>
-  Math.max(0, settings.effective('look.message.collapse_authors_window') || 0) * 60_000,
+  Math.max(0, (settings.effective('look.message.collapse_authors_window') as number) || 0) * 60_000,
 );
 const collapseTimestampsEnabled = computed(() => !!settings.effective('look.message.collapse_timestamps'));
 
@@ -326,10 +386,22 @@ const effectiveCollapseTimestamps = computed(() => collapseTimestampsEnabled.val
 // network broadcasts the same payload, so reading from this buffer's network
 // is equivalent to reading user state. The server pseudo-buffer doesn't get
 // presence markers — it's noise-only.
-const awayState = computed(() => {
+
+// The `away` field in NetworkState is typed as `string | null` but the runtime
+// value is this richer object (applyAwayState sets it from ircManager's shape).
+interface AwayStateObject {
+  active: boolean;
+  message: string | null;
+  since: string | null;
+  autoSet: boolean;
+  backAt: string | null;
+}
+
+const awayState = computed((): AwayStateObject | null => {
   const b = buffer.value;
   if (!b || b.target.startsWith(':server:')) return null;
-  return networks.states[b.networkId]?.away || null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (networks.states[b.networkId]?.away as any) || null;
 });
 
 // Away/back markers stop being useful once the user has been back a while —
@@ -338,7 +410,7 @@ const awayState = computed(() => {
 // disappear without needing a new message to trigger renderRows.
 const PRESENCE_MARKER_TTL_MS = 30 * 60 * 1000;
 const now = ref(Date.now());
-let nowTimer = null;
+let nowTimer: ReturnType<typeof setInterval> | null = null;
 
 // Striped row types — chat-shaped events that receive .line.alt zebra striping.
 // System events (join/part/quit/nick/mode/topic/etc.) are never striped, so
@@ -349,10 +421,10 @@ const STRIPED_TYPES = new Set(['message', 'action', 'notice']);
 
 // One-pass walk over messages to (a) decide which rows the smart filter
 // should hide and (b) tag rows with alt-row striping.
-const renderRows = computed(() => {
+const renderRows = computed((): RenderRow[] => {
   const list = messages.value;
   const buf = buffer.value;
-  const out = [];
+  const out: RenderRow[] = [];
 
   const filterOn = smartFilterEnabled.value && !!buf?.speakers;
   const ownNickLc = selfLower.value;
@@ -386,17 +458,21 @@ const renderRows = computed(() => {
   // message in the buffer). Tracked across the loop below.
   let lastDayKey = null;
   const pushAwayDivider = () => {
-    out.push({ divider: 'away', awayMessage: aw.message, awayAt: aw.since, key: 'presence-away' });
+    if (!aw) return;
+    out.push({ divider: 'away', awayMessage: aw.message ?? undefined, awayAt: aw.since ?? undefined, key: 'presence-away' });
   };
   const pushBackDivider = () => {
-    out.push({ divider: 'back', awayAt: aw.since, backAt: aw.backAt, key: 'presence-back' });
+    if (!aw) return;
+    out.push({ divider: 'back', awayAt: aw.since ?? undefined, backAt: aw.backAt ?? undefined, key: 'presence-back' });
   };
 
 
   const networkId = buf?.networkId;
 
   for (let i = 0; i < list.length; i++) {
-    const m = list[i];
+    // Cast to ChatMessage so template-used properties are typed; BufferMessage
+    // uses [key: string]: unknown for extra fields (time, self, alt, userhost…).
+    const m = list[i] as ChatMessage;
     const key = m.id ?? `live:${i}`;
     let hidden = false;
 
@@ -406,7 +482,7 @@ const renderRows = computed(() => {
     // Removing a mask re-runs this computed and previously-hidden rows
     // reappear without a backlog reload.
     if (!m.self && m.nick && networkId
-        && ignores.isIgnored(networkId, m.nick, m.userhost)) {
+        && ignores.isIgnored(networkId, m.nick, m.userhost ?? '')) {
       continue;
     }
 
@@ -416,8 +492,8 @@ const renderRows = computed(() => {
         ((m.type === 'part' || m.type === 'quit') && fQuit) ||
         (m.type === 'nick' && fNick);
       if (filterable && m.nick.toLowerCase() !== ownNickLc) {
-        const lastSpoke = buf.speakers[m.nick.toLowerCase()]?.lastTime;
-        const eventTime = Date.parse(m.time) || 0;
+        const lastSpoke = buf?.speakers[m.nick.toLowerCase()]?.lastTime;
+        const eventTime = Date.parse(m.time ?? '') || 0;
         const recentlySpoke = lastSpoke != null
           && lastSpoke <= eventTime
           && (eventTime - lastSpoke) <= delayMs;
@@ -433,25 +509,25 @@ const renderRows = computed(() => {
     if (hidden) continue;
 
     // Day-change marker before the first visible row of each local day.
-    const dayKey = formatDate(m.time);
+    const dayKey = formatDate(m.time ?? '');
     if (dayKey && dayKey !== lastDayKey) {
-      out.push({ divider: 'date', dateStr: formatDayLabel(m.time), key: `date:${dayKey}` });
+      out.push({ divider: 'date', dateStr: formatDayLabel(m.time ?? ''), key: `date:${dayKey}` });
       lastDayKey = dayKey;
     }
 
-    const mTimeMs = Date.parse(m.time) || 0;
-    if (!awayInserted && mTimeMs > awaySinceMs) {
+    const mTimeMs = Date.parse(m.time ?? '') || 0;
+    if (!awayInserted && awaySinceMs != null && mTimeMs > awaySinceMs) {
       pushAwayDivider();
       awayInserted = true;
     }
-    if (!backInserted && mTimeMs > backAtMs) {
+    if (!backInserted && backAtMs != null && mTimeMs > backAtMs) {
       pushBackDivider();
       backInserted = true;
     }
     // Insert the unread divider before the first visible row with id past
     // the snapshot. Tolerates the exact-id row being filtered out: we just
     // pick the next surviving row past the boundary.
-    if (!dividerInserted && m.id != null && m.id > dividerAfterId) {
+    if (!dividerInserted && m.id != null && Number(m.id) > dividerAfterId) {
       out.push({ divider: 'unread', key: 'unread-divider' });
       dividerInserted = true;
     }
@@ -469,14 +545,15 @@ const renderRows = computed(() => {
   // the away/back/unread markers to land between events, not get swallowed
   // by a multi-event group). Recent speakers come from the same `speakers`
   // map nick completion uses, so the cap prefers nicks the reader knows.
-  let final = out;
+  let final: RenderRow[] = out;
   if (consolidateEnabled.value) {
     const speakers = buf?.speakers ? Object.keys(buf.speakers) : [];
-    final = consolidateRows(out, {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    final = consolidateRows(out as any, {
       enabled: true,
       maxNames: consolidateMaxNames.value,
       recentSpeakers: speakers,
-    });
+    }) as RenderRow[];
   }
   // Per-row display collapsing (nick + timestamp dedupe). Runs over the same
   // row shape consolidateRows emits and tags rows in place — the template
@@ -484,7 +561,8 @@ const renderRows = computed(() => {
   // prefix/time cells (subgrid stays aligned). compactMode tells the util
   // to skip hidden continuation rows when tracking the time chain.
   if (effectiveCollapseAuthors.value || effectiveCollapseTimestamps.value) {
-    collapseDisplay(final, {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    collapseDisplay(final as any, {
       collapseAuthors: effectiveCollapseAuthors.value,
       authorWindowMs: collapseAuthorsWindowMs.value,
       collapseTimestamps: effectiveCollapseTimestamps.value,
@@ -497,11 +575,13 @@ const renderRows = computed(() => {
 
 // What goes in column 2. For chat lines this is the nick (right-aligned);
 // for system events it's a tiny indicator glyph (-->, <--, --, !!).
-function prefixText(m) {
+function prefixText(m: ChatMessage | undefined): string {
+  if (!m) return '';
+
   switch (m.type) {
-    case 'message': return m.nick;
+    case 'message': return m.nick ?? '';
     case 'action':  return '*';
-    case 'notice':  return `-${m.nick}-`;
+    case 'notice':  return `-${m.nick ?? ''}-`;
     case 'join':    return '-->';
     case 'part':
     case 'quit':
@@ -515,49 +595,55 @@ function prefixText(m) {
   }
 }
 
-function prefixClass(m) {
+function prefixClass(m: ChatMessage | undefined) {
   return {
-    nick: m.type === 'message' || m.type === 'notice',
-    'action-marker': m.type === 'action',
-    italic: m.type === 'action' && actionItalic.value,
-    self: m.self,
-    [`p-${m.type}`]: true,
+    nick: m?.type === 'message' || m?.type === 'notice',
+    'action-marker': m?.type === 'action',
+    italic: m?.type === 'action' && actionItalic.value,
+    self: m?.self,
+    [`p-${m?.type}`]: true,
   };
 }
 
-function prefixStyle(m) {
-  if (m.type === 'message' || m.type === 'notice') {
-    if (m.self) return { color: selfColor.value };
-    const c = nicks.color(m.nick);
+function prefixStyle(m: ChatMessage | undefined): CSSProperties | null {
+  if (m?.type === 'message' || m?.type === 'notice') {
+    if (m.self) return { color: selfColor.value as string };
+    const c = nicks.color(m.nick ?? '');
     return c ? { color: c } : null;
   }
   return null;
 }
 
-function bodyClass(m) {
+function bodyClass(m: ChatMessage | undefined) {
   return {
-    italic: m.type === 'action' && actionItalic.value,
-    'meta-body': m.type !== 'message' && m.type !== 'action' && m.type !== 'notice',
+    italic: m?.type === 'action' && actionItalic.value,
+    'meta-body': m?.type !== 'message' && m?.type !== 'action' && m?.type !== 'notice',
   };
 }
 
 // True for any line type whose body is just `m.text` and should be split
 // through the nick-coloring helper. Action lines render their author's nick
 // at the start of the body, with `m.text` after.
-function hasInlineText(m) {
-  return m.type === 'message' || m.type === 'notice' || m.type === 'action';
+function hasInlineText(m: ChatMessage | undefined): boolean {
+  return m?.type === 'message' || m?.type === 'notice' || m?.type === 'action';
 }
 
-function textSegments(m) {
+function textSegments(m: ChatMessage | undefined): RenderSegment[] {
+  if (!m) return [];
   if (m.type === 'action') {
     // Body is "<nick> <text>" — author's nick then the action text.
-    return nicks.splitText(`${m.nick} ${m.text || ''}`, nickSet.value, selfLower.value);
+    return nicks.splitText(`${m.nick} ${m.text || ''}`, nickSet.value, selfLower.value) as RenderSegment[];
   }
-  return nicks.splitText(m.text || '', nickSet.value, selfLower.value);
+  return nicks.splitText(m.text || '', nickSet.value, selfLower.value) as RenderSegment[];
 }
 
-function segStyle(seg) { return segmentInlineStyle(seg, selfColor.value); }
-function segHasStyle(seg) { return segmentHasStyle(seg); }
+function segStyle(seg: RenderSegment): CSSProperties { return segmentInlineStyle(seg, selfColor.value as string | null) as CSSProperties; }
+function segHasStyle(seg: RenderSegment) { return segmentHasStyle(seg); }
+
+// Template helpers for consolidation row items — vue-tsc can't narrow
+// NickEntry | RenameEntry based on g.kind, so we provide typed accessors.
+function asRename(item: NickEntry | RenameEntry): RenameEntry { return item as RenameEntry; }
+function asNick(item: NickEntry | RenameEntry): NickEntry { return item as NickEntry; }
 
 function requestMoreHistory() {
   const buf = buffer.value;
@@ -648,7 +734,7 @@ function ensureViewportFilled() {
 // inertia would carry past our set, the dip would be detected again, and
 // another fetch would cascade. We wait until scroll stabilizes before
 // deciding the user is genuinely at the top.
-let pendingHistoryTimer = null;
+let pendingHistoryTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Last seen scroller clientHeight, used to detect resize-induced scroll
 // events. When the scroller shrinks (input grows, keyboard slides up,
@@ -688,7 +774,7 @@ function onScroll() {
 // Without this, a live message can arrive between the user's wheel and the
 // scroll event firing, the watcher resumes on nextTick before onScroll has
 // run, and reads a stale stickToBottom=true — snapping the user back.
-function onWheel(e) {
+function onWheel(e: WheelEvent) {
   if (e.deltaY < 0) {
     stickToBottom.value = false;
     setStuckToBottom(false);
@@ -746,16 +832,16 @@ watch(
     // the same set of [data-msg-id] elements with stable identity above
     // and below the prepend boundary.
     if (firstChanged && !lastChanged && grew && oldFirstId != null) {
-      const anchor = el.querySelector(`[data-msg-id="${oldFirstId}"]`);
+      const anchor = el.querySelector(`[data-msg-id="${oldFirstId}"]`) as HTMLElement | null;
       const anchorOldTop = anchor ? anchor.offsetTop : null;
       const oldScrollTop = el.scrollTop;
       const oldScrollHeight = el.scrollHeight;
       await nextTick();
       const anchorNew = anchorOldTop != null
-        ? el.querySelector(`[data-msg-id="${oldFirstId}"]`)
+        ? el.querySelector(`[data-msg-id="${oldFirstId}"]`) as HTMLElement | null
         : null;
       if (anchorNew) {
-        el.scrollTop = anchorNew.offsetTop - (anchorOldTop - oldScrollTop);
+        el.scrollTop = anchorNew.offsetTop - (anchorOldTop! - oldScrollTop);
       } else {
         el.scrollTop = el.scrollHeight - oldScrollHeight + oldScrollTop;
       }
@@ -801,10 +887,10 @@ watch(
     if (appended && !isDetached) {
       if (stickToBottom.value) scrollToBottom();
       else {
-        const tail = messages.value[messages.value.length - 1];
+        const tail = messages.value[messages.value.length - 1] as ChatMessage | undefined;
         const nid = buffer.value?.networkId;
         const tailIgnored = tail && !tail.self && tail.nick && nid
-          && ignores.isIgnored(nid, tail.nick, tail.userhost);
+          && ignores.isIgnored(nid, tail.nick, tail.userhost ?? '');
         if (!tailIgnored) bumpNewBelow();
       }
     }
@@ -853,7 +939,7 @@ watch(scrollToBottomToken, async () => {
 // snap is done synchronously here so any scroll event the snap triggers is
 // observed against the freshly-updated lastClientHeight (i.e. classified as
 // not-a-user-scroll). Pairs with the resize-induced-scroll guard in onScroll.
-let scrollerObserver = null;
+let scrollerObserver: ResizeObserver | null = null;
 function onScrollerResize() {
   const el = scroller.value;
   if (!el) return;
@@ -886,7 +972,7 @@ onBeforeUnmount(() => {
 // message arriving mid-read doesn't yank the viewport back to the bottom;
 // downward paging that reaches the tail re-engages stick-to-bottom via the
 // normal onScroll path.
-function scrollByPage(direction) {
+function scrollByPage(direction: number) {
   const el = scroller.value;
   if (!el) return;
   const delta = Math.max(el.clientHeight - 40, 80) * (direction < 0 ? -1 : 1);

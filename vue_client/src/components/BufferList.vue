@@ -121,11 +121,11 @@
   </nav>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
 import draggable from 'vuedraggable';
 import { useNetworksStore } from '../stores/networks.js';
-import { useBuffersStore } from '../stores/buffers.js';
+import { useBuffersStore, type Buffer } from '../stores/buffers.js';
 import { useDraftStore } from '../stores/drafts.js';
 import { usePinsStore } from '../stores/pins.js';
 import { useSettingsStore } from '../stores/settings.js';
@@ -148,7 +148,7 @@ const bufferActions = useBufferActions();
 const unreadBold = computed(() => !!settings.effective('look.buffer_list.unread_bold'));
 const unreadDisplay = computed(() => String(settings.effective('look.buffer_list.unread_display')));
 const showHighlightBadge = computed(() => unreadDisplay.value !== 'off');
-function countFor(unread, highlights) {
+function countFor(unread: number, highlights: number): number {
   if (unreadDisplay.value === 'full') return unread;
   if (unreadDisplay.value === 'highlights') return highlights;
   return 0;
@@ -158,59 +158,59 @@ function countFor(unread, highlights) {
 // objects so vuedraggable can render them directly. We mutate the inner arrays
 // (splice) rather than replace them so vuedraggable's bound array reference
 // stays stable across syncs.
-const pinnedBufsByNet = reactive({});
+const pinnedBufsByNet = reactive<Record<number, Buffer[]>>({});
 const dragging = ref(false);
 
-function isServerBuffer(buf) {
+function isServerBuffer(buf: Buffer): boolean {
   return buf.target.startsWith(':server:');
 }
 
-function isDmBuffer(buf) {
+function isDmBuffer(buf: Buffer): boolean {
   return !isServerBuffer(buf) && !buf.target.startsWith('#');
 }
 
-function serverTarget(networkId) {
+function serverTarget(networkId: number): string {
   return `:server:${networkId}`;
 }
 
-function serverBuf(networkId) {
+function serverBuf(networkId: number): Buffer | null {
   return buffers.byKey(`${networkId}::${serverTarget(networkId)}`);
 }
 
-function serverUnread(networkId) {
+function serverUnread(networkId: number): number {
   return serverBuf(networkId)?.unread || 0;
 }
 
-function serverHighlights(networkId) {
+function serverHighlights(networkId: number): number {
   return serverBuf(networkId)?.highlighted || 0;
 }
 
 // Keep the unread chip narrow — a four-figure count would stretch the row
 // and isn't more actionable than "a lot".
-function unreadLabel(count) {
+function unreadLabel(count: number): string {
   return count > 999 ? '>999' : String(count);
 }
 
-function hasDraft(buf) {
+function hasDraft(buf: Buffer): boolean {
   return drafts.hasDraft(buf.networkId, buf.target);
 }
 
-function labelFor(buf) {
+function labelFor(buf: Buffer): string {
   return buf.target;
 }
 
-function bufferOrder(buf) {
+function bufferOrder(buf: Buffer): number {
   if (buf.target.startsWith('#')) return 0;
   return 1;
 }
 
 // Strip leading hashes so ##anime sorts next to #anime, not before #aardvark
 // (raw localeCompare would weight every leading '#' as sort-significant).
-function sortKey(target) {
+function sortKey(target: string): string {
   return target.replace(/^#+/, '').toLowerCase();
 }
 
-function unpinnedBufs(networkId) {
+function unpinnedBufs(networkId: number): Buffer[] {
   const pinnedSet = new Set(pins.forNetwork(networkId));
   return buffers
     .forNetwork(networkId)
@@ -226,13 +226,13 @@ function unpinnedBufs(networkId) {
 // Mirror pins.byNetwork into a local reactive map of concrete buffer objects.
 // Pinned targets without a matching open buffer (e.g. closed/parted, pin row
 // persists on the server) are filtered out so we don't render empty rows.
-function syncPinned() {
+function syncPinned(): void {
   if (dragging.value) return;
   for (const net of networks.networks) {
     const targets = pins.forNetwork(net.id);
-    const bufByTarget = new Map();
+    const bufByTarget = new Map<string, Buffer>();
     for (const b of buffers.forNetwork(net.id)) bufByTarget.set(b.target, b);
-    const list = targets.map((t) => bufByTarget.get(t)).filter(Boolean);
+    const list = targets.map((t) => bufByTarget.get(t)).filter((b): b is Buffer => !!b);
     if (!pinnedBufsByNet[net.id]) {
       pinnedBufsByNet[net.id] = list;
     } else {
@@ -243,7 +243,7 @@ function syncPinned() {
   // Drop entries for networks that no longer exist.
   const live = new Set(networks.networks.map((n) => n.id));
   for (const k of Object.keys(pinnedBufsByNet)) {
-    if (!live.has(Number(k))) delete pinnedBufsByNet[k];
+    if (!live.has(Number(k))) delete pinnedBufsByNet[Number(k)];
   }
 }
 
@@ -257,22 +257,22 @@ watch(
   { deep: true, immediate: true },
 );
 
-function onPinDragEnd(networkId) {
+function onPinDragEnd(networkId: number): void {
   dragging.value = false;
   const list = pinnedBufsByNet[networkId] || [];
   pins.reorder(networkId, list.map((b) => b.target));
 }
 
-function onBufferContextMenu(e, buf) {
+function onBufferContextMenu(e: MouseEvent, buf: Buffer): void {
   bufferActions.openMenuFor(buf, e.clientX, e.clientY);
 }
 
 // Hover three-dots affordance — opens the same menu anchored to the button.
-function onRowActionsClick(e, buf) {
-  bufferActions.openMenuFromButton(buf, e.currentTarget);
+function onRowActionsClick(e: MouseEvent, buf: Buffer): void {
+  bufferActions.openMenuFromButton(buf, e.currentTarget as Element);
 }
 
-function rowClasses(buf, networkId) {
+function rowClasses(buf: Buffer, networkId: number): Record<string, boolean> {
   return {
     active: isActive(networkId, buf.target),
     unread: buf.unread > 0,
@@ -283,15 +283,15 @@ function rowClasses(buf, networkId) {
   };
 }
 
-function select(networkId, target) {
+function select(networkId: number, target: string): void {
   buffers.activate(networkId, target);
 }
 
-function isActive(networkId, target) {
+function isActive(networkId: number, target: string): boolean {
   return networks.activeKey === `${networkId}::${target}`;
 }
 
-function stateClass(networkId) {
+function stateClass(networkId: number): string {
   const s = networks.states[networkId]?.state;
   if (s === 'connected') return 'good';
   if (s === 'connecting' || s === 'reconnecting') return 'warn';
@@ -302,26 +302,28 @@ function stateClass(networkId) {
 // or when the network itself isn't connected — in both cases the buffer is
 // just a history view, not a live channel. DMs and server buffers have no
 // "joined" concept and are never dimmed by this rule.
-function isUnjoined(buf, networkId) {
+function isUnjoined(buf: Buffer, networkId: number): boolean {
   if (!buf.target.startsWith('#')) return false;
   if (buf.joined === false) return true;
   return networks.states[networkId]?.state !== 'connected';
 }
 
-function peerOf(buf) {
-  return networks.states[buf.networkId]?.peerPresence?.[buf.target.toLowerCase()] || null;
+function peerOf(buf: Buffer): { state?: string; stateAt?: string } | null {
+  const entry = networks.states[buf.networkId]?.peerPresence?.[buf.target.toLowerCase()];
+  if (!entry) return null;
+  return { state: entry.state ?? undefined, stateAt: entry.stateAt ?? undefined };
 }
-function isPeerOffline(buf) {
+function isPeerOffline(buf: Buffer): boolean {
   return isDmBuffer(buf) && derivePeerOffline(peerOf(buf));
 }
-function isPeerAway(buf) {
+function isPeerAway(buf: Buffer): boolean {
   return isDmBuffer(buf) && derivePeerAway(peerOf(buf));
 }
-function dmTitle(buf) {
-  if (!isDmBuffer(buf)) return null;
+function dmTitle(buf: Buffer): string | undefined {
+  if (!isDmBuffer(buf)) return undefined;
   if (isPeerOffline(buf)) return `${buf.target} is offline`;
   if (isPeerAway(buf)) return `${buf.target} is away`;
-  return null;
+  return undefined;
 }
 </script>
 

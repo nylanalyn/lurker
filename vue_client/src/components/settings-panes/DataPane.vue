@@ -70,20 +70,25 @@
   </section>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { api, apiMultipart } from '../../api.js';
 import { resetSession } from '../../composables/useSessionReset.js';
 
+interface ExportPreview {
+  settingsOnly: Record<string, number>;
+  withMessages: { messages: number };
+}
+
 const router = useRouter();
 
-const preview = ref(null);
+const preview = ref<ExportPreview | null>(null);
 const exportError = ref('');
 const includeMessages = ref(false);
 
-const fileInputEl = ref(null);
-const chosenFile = ref(null);
+const fileInputEl = ref<HTMLInputElement | null>(null);
+const chosenFile = ref<File | null>(null);
 const importError = ref('');
 const importNotice = ref('');
 const importing = ref(false);
@@ -104,7 +109,7 @@ const totalSmallRows = computed(() => {
 onMounted(async () => {
   try {
     preview.value = await api('/api/exports/preview');
-  } catch (e) {
+  } catch (e: any) {
     exportError.value = e.message || 'failed to load export preview';
   }
 });
@@ -115,8 +120,8 @@ function onDownload() {
   window.location.href = `/api/exports${qs}`;
 }
 
-function onFileChosen(e) {
-  const f = e.target.files?.[0];
+function onFileChosen(e: Event) {
+  const f = (e.target as HTMLInputElement).files?.[0];
   if (!f) return;
   chosenFile.value = f;
   importError.value = '';
@@ -153,14 +158,14 @@ async function onImport() {
     // Wipe stores so the post-reset bootstrap rehydrates from the server.
     resetSession();
     setTimeout(() => { router.replace('/'); window.location.reload(); }, 800);
-  } catch (e) {
+  } catch (e: any) {
     importError.value = e.message || 'import failed';
   } finally {
     importing.value = false;
   }
 }
 
-function formatBytes(n) {
+function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;

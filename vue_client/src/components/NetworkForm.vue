@@ -93,17 +93,23 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { reactive, ref, computed } from 'vue';
-import { useNetworksStore } from '../stores/networks.js';
+import { useNetworksStore, type Network } from '../stores/networks.js';
 
-const props = defineProps({
-  network: { type: Object, default: null },
+const props = withDefaults(defineProps<{
+  network?: Network | null;
+}>(), {
+  network: null,
 });
-const emit = defineEmits(['close']);
+const emit = defineEmits<{ close: [] }>();
 const networks = useNetworksStore();
 
 const isEdit = computed(() => !!props.network);
+
+// Cast to a loose record so we can read extra API fields not declared in
+// the typed Network interface (sasl_account, autoconnect, connect_commands, etc.).
+const netRaw = props.network as Record<string, unknown> | null;
 
 const form = reactive({
   name: props.network?.name ?? '',
@@ -111,13 +117,13 @@ const form = reactive({
   port: props.network?.port ?? 6697,
   tls: props.network ? !!props.network.tls : true,
   nick: props.network?.nick ?? '',
-  realname: props.network?.realname ?? '',
+  realname: (netRaw?.realname as string | undefined) ?? '',
   server_password: '',
-  sasl_account: props.network?.sasl_account ?? '',
+  sasl_account: (netRaw?.sasl_account as string | undefined) ?? '',
   sasl_password: '',
   default_channel: '#lurker',
-  autoconnect: props.network ? !!props.network.autoconnect : true,
-  connect_commands: props.network?.connect_commands ?? '',
+  autoconnect: netRaw ? !!netRaw.autoconnect : true,
+  connect_commands: (netRaw?.connect_commands as string | undefined) ?? '',
 });
 
 // Auto-expand advanced when editing a row that already has any advanced value
@@ -125,43 +131,43 @@ const form = reactive({
 // they configured previously.
 const showAdvanced = ref(
   !!props.network && (
-    !!props.network.has_password
-    || !!props.network.has_sasl_password
-    || !!props.network.sasl_account
-    || !!props.network.connect_commands
-    || props.network.autoconnect === false
+    !!netRaw?.has_password
+    || !!netRaw?.has_sasl_password
+    || !!netRaw?.sasl_account
+    || !!netRaw?.connect_commands
+    || netRaw?.autoconnect === false
   )
 );
 
 const loading = ref(false);
-const error = ref(null);
+const error = ref<string | null>(null);
 
 // Editing host/port/tls/nick/credentials only takes effect on the next
 // connection — a saved row otherwise sits untouched while the live IRC client
 // keeps using the old config. Detect those changes and reconnect after PATCH
 // so save-then-nothing-happens isn't the default UX.
-function connectionChanged() {
+function connectionChanged(): boolean {
   if (!props.network) return false;
-  const orig = props.network;
-  if ((form.host || '') !== (orig.host || '')) return true;
+  const orig = props.network as Record<string, unknown>;
+  if ((form.host || '') !== ((orig.host as string) || '')) return true;
   if (Number(form.port) !== Number(orig.port)) return true;
-  if (!!form.tls !== !!orig.tls) return true;
-  if ((form.nick || '') !== (orig.nick || '')) return true;
-  if ((form.realname || '') !== (orig.realname || '')) return true;
-  if ((form.sasl_account || '') !== (orig.sasl_account || '')) return true;
-  if ((form.connect_commands || '') !== (orig.connect_commands || '')) return true;
+  if (!!form.tls !== !!(orig.tls)) return true;
+  if ((form.nick || '') !== ((orig.nick as string) || '')) return true;
+  if ((form.realname || '') !== ((orig.realname as string) || '')) return true;
+  if ((form.sasl_account || '') !== ((orig.sasl_account as string) || '')) return true;
+  if ((form.connect_commands || '') !== ((orig.connect_commands as string) || '')) return true;
   // Passwords are write-only on the API, so any non-empty value is a new value.
   if (form.server_password) return true;
   if (form.sasl_password) return true;
   return false;
 }
 
-async function submit() {
+async function submit(): Promise<void> {
   loading.value = true;
   error.value = null;
   try {
-    if (isEdit.value) {
-      const patch = {
+    if (isEdit.value && props.network) {
+      const patch: Record<string, unknown> = {
         name: form.name,
         host: form.host,
         port: form.port,
@@ -181,34 +187,36 @@ async function submit() {
       await networks.create({ ...form });
     }
     emit('close');
-  } catch (err) {
-    error.value = err.message || 'failed to save network';
+  } catch (err: unknown) {
+    error.value = (err instanceof Error ? err.message : null) || 'failed to save network';
   } finally {
     loading.value = false;
   }
 }
 
-async function reconnect() {
+async function reconnect(): Promise<void> {
+  if (!props.network) return;
   loading.value = true;
   error.value = null;
   try {
     await networks.reconnect(props.network.id);
     emit('close');
-  } catch (err) {
-    error.value = err.message || 'failed to reconnect';
+  } catch (err: unknown) {
+    error.value = (err instanceof Error ? err.message : null) || 'failed to reconnect';
     loading.value = false;
   }
 }
 
-async function remove() {
+async function remove(): Promise<void> {
+  if (!props.network) return;
   if (!confirm(`Delete network "${props.network.name}"? This disconnects and removes its history.`)) return;
   loading.value = true;
   error.value = null;
   try {
     await networks.remove(props.network.id);
     emit('close');
-  } catch (err) {
-    error.value = err.message || 'failed to delete network';
+  } catch (err: unknown) {
+    error.value = (err instanceof Error ? err.message : null) || 'failed to delete network';
     loading.value = false;
   }
 }

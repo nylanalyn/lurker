@@ -40,20 +40,40 @@
   </li>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue';
+import type { CSSProperties } from 'vue';
 import { useNetworksStore } from '../stores/networks.js';
 import { useSettingsStore } from '../stores/settings.js';
 import { useNickColors } from '../composables/useNickColors.js';
 import { formatTimestamp, formatDate } from '../utils/timestamp.js';
 
-const props = defineProps({
-  message: { type: Object, required: true },
-  active: { type: Boolean, default: false },
-  removable: { type: Boolean, default: false },
-});
+// Shared row shape from search/highlights/bookmarks. All callers pass at
+// minimum { id, networkId, target, nick, time, text }; `self` and
+// `networkName` are optional extras some callers include.
+export interface HistoryMessage {
+  id?: number | string | null;
+  networkId: number;
+  target: string;
+  nick: string;
+  text?: string;
+  time?: string;
+  self?: boolean;
+  networkName?: string;
+  [key: string]: unknown;
+}
 
-defineEmits(['jump', 'hover', 'remove']);
+const props = withDefaults(defineProps<{
+  message: HistoryMessage;
+  active?: boolean;
+  removable?: boolean;
+}>(), { active: false, removable: false });
+
+defineEmits<{
+  jump: [message: HistoryMessage];
+  hover: [];
+  remove: [message: HistoryMessage];
+}>();
 
 const networks = useNetworksStore();
 const settings = useSettingsStore();
@@ -66,16 +86,18 @@ const selfColor = computed(() => settings.effective('look.nick.self_color'));
 // ambiguous — prepend the calendar date. Skipped if the user's format
 // already includes a year token to avoid doubling up.
 const time = computed(() => {
-  const t = formatTimestamp(props.message.time, tsFormat.value);
-  if (tsFormat.value && /YYYY/.test(tsFormat.value)) return t;
-  const d = formatDate(props.message.time);
+  const fmt = tsFormat.value as string;
+  const iso = props.message.time ?? '';
+  const t = formatTimestamp(iso, fmt);
+  if (fmt && /YYYY/.test(fmt)) return t;
+  const d = formatDate(iso);
   if (!d) return t;
   return t ? `${d} ${t}` : d;
 });
 
-const networkLabel = computed(() => {
+const networkLabel = computed((): string => {
   const m = props.message;
-  return m.networkName || networks.networks.find((n) => n.id === m.networkId)?.name || `net:${m.networkId}`;
+  return (m.networkName as string | undefined) || networks.networks.find((n) => n.id === m.networkId)?.name || `net:${m.networkId}`;
 });
 
 // Drop the `:server:<id>` pseudo-target so server messages render as just
@@ -86,8 +108,8 @@ const targetLabel = computed(() => {
   return t;
 });
 
-const nickStyle = computed(() => {
-  if (props.message.self) return { color: selfColor.value };
+const nickStyle = computed((): CSSProperties | null => {
+  if (props.message.self) return { color: selfColor.value as string };
   const c = nicks.color(props.message.nick);
   return c ? { color: c } : null;
 });

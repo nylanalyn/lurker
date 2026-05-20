@@ -26,14 +26,14 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue';
 
-const props = defineProps({
-  word: { type: String, required: true },
-  rows: { type: Number, default: 12 },
-  repeats: { type: Number, default: 10 },
-});
+const props = withDefaults(defineProps<{
+  word: string;
+  rows?: number;
+  repeats?: number;
+}>(), { rows: 12, repeats: 10 });
 
 const tiledLine = computed(() => {
   const w = (props.word || '').trim();

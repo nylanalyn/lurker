@@ -53,31 +53,30 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import WordBackdrop from './WordBackdrop.vue';
 
-const props = defineProps({
-  word: { type: String, default: '' },
-  title: { type: String, default: '' },
-  size: {
-    type: String,
-    default: 'lg',
-    validator: (v) => ['sm', 'md', 'lg', 'xl'].includes(v),
-  },
-  align: {
-    type: String,
-    default: 'center',
-    validator: (v) => ['center', 'top'].includes(v),
-  },
-  closeOnBackdrop: { type: Boolean, default: true },
-  closeTitle: { type: String, default: 'close' },
+const props = withDefaults(defineProps<{
+  word?: string;
+  title?: string;
+  size?: string;
+  align?: string;
+  closeOnBackdrop?: boolean;
+  closeTitle?: string;
+}>(), {
+  word: '',
+  title: '',
+  size: 'lg',
+  align: 'center',
+  closeOnBackdrop: true,
+  closeTitle: 'close',
 });
 
-const emit = defineEmits(['close']);
+const emit = defineEmits<{ close: [] }>();
 
-const modalEl = ref(null);
-const cardEl = ref(null);
+const modalEl = ref<HTMLElement | null>(null);
+const cardEl = ref<HTMLElement | null>(null);
 
 // Fall back to the title when the caller didn't supply an explicit word,
 // so the wallpaper always says *something* even for one-off modals.

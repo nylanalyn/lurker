@@ -10,7 +10,7 @@ import { defineStore } from 'pinia';
 
 export interface ChanlistRow {
   channel: string;
-  users: number;
+  num_users: number;
   topic: string;
 }
 

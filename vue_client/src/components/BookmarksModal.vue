@@ -29,20 +29,28 @@
   </AppModal>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, onMounted } from 'vue';
 import AppModal from './AppModal.vue';
-import HistoryMessageRow from './HistoryMessageRow.vue';
+import HistoryMessageRow, { type HistoryMessage } from './HistoryMessageRow.vue';
 import { useBookmarksStore } from '../stores/bookmarks.js';
 import { useIgnoresStore } from '../stores/ignores.js';
 
-const emit = defineEmits(['close', 'jump']);
+const emit = defineEmits<{
+  close: [];
+  jump: [payload: { networkId: number; target: string; messageId: number }];
+}>();
 
 const store = useBookmarksStore();
 const ignores = useIgnoresStore();
 
+// The API response includes `userhost` alongside the declared BookmarkMessage
+// fields. Cast the store items to HistoryMessage (which has an open index
+// signature) so they're compatible with HistoryMessageRow's :message prop.
+type BookmarkRow = HistoryMessage & { userhost?: string | null };
+
 const visibleItems = computed(() =>
-  store.items.filter((m) => !ignores.isIgnored(m.networkId, m.nick, m.userhost))
+  (store.items as BookmarkRow[]).filter((m) => !ignores.isIgnored(m.networkId, m.nick, m.userhost ?? ''))
 );
 
 onMounted(() => {
@@ -51,13 +59,13 @@ onMounted(() => {
   store.ensureLoaded();
 });
 
-function onJump(m) {
-  emit('jump', { networkId: m.networkId, target: m.target, messageId: m.id });
+function onJump(m: HistoryMessage): void {
+  emit('jump', { networkId: m.networkId, target: m.target, messageId: Number(m.id) });
   emit('close');
 }
 
-function onRemove(m) {
-  store.remove(m.id);
+function onRemove(m: HistoryMessage): void {
+  store.remove(Number(m.id));
 }
 </script>
 
