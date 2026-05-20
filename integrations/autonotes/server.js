@@ -98,8 +98,10 @@ app.get("/api/buffers", async (req, res, next) => {
 
 app.post("/api/scan", async (req, res, next) => {
   try {
-    const { networkId, target, depth } = req.body ?? {};
-    if (typeof networkId !== "number" || !target) {
+    const { networkId, depth } = req.body ?? {};
+    // Number.isFinite rather than typeof — NaN/Infinity are both "number".
+    const target = typeof req.body?.target === "string" ? req.body.target.trim() : "";
+    if (!Number.isFinite(networkId) || !target) {
       return res.status(400).json({ error: "networkId (number) and target (string) are required" });
     }
     const cleanDepth = Math.max(1, Math.min(500, Number(depth) || 200));
@@ -188,6 +190,11 @@ app.use((err, _req, res, _next) => {
   res.status(status).json({ error: err.message ?? "internal error" });
 });
 
-app.listen(PORT, () => {
-  console.log(`autonotes listening on http://localhost:${PORT}`);
+// Bind localhost by default — this app has no auth and holds the operator's
+// Lurker + Anthropic credentials, so it must not be reachable from the LAN
+// unless the operator explicitly opts in via HOST.
+const HOST = process.env.HOST || "127.0.0.1";
+
+app.listen(PORT, HOST, () => {
+  console.log(`autonotes listening on http://${HOST}:${PORT}`);
 });

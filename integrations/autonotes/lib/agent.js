@@ -269,8 +269,11 @@ function summarizeToolResult(name, payload) {
     const msgs = Array.isArray(payload.messages) ? payload.messages : [];
     if (msgs.length === 0) return "0 messages";
     const nicks = new Set(msgs.map((m) => m.nick).filter(Boolean));
-    const oldest = formatTs(msgs[0]?.time);
-    const newest = formatTs(msgs[msgs.length - 1]?.time);
+    // Derive the range from the timestamps, not array position: recent_messages
+    // returns oldest-first but search_messages returns newest-first.
+    const times = msgs.map((m) => m.time).filter((t) => typeof t === "number");
+    const oldest = formatTs(times.length ? Math.min(...times) : undefined);
+    const newest = formatTs(times.length ? Math.max(...times) : undefined);
     const more =
       "hasOlder" in payload
         ? `hasOlder=${payload.hasOlder}`
