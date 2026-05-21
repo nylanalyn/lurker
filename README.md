@@ -55,6 +55,15 @@ For a public, HTTPS-enabled Lurker on a fresh droplet — no SSH required:
 
 TLS via Let's Encrypt is provisioned automatically by Caddy. Leave `LURKER_DOMAIN` empty (and skip step 1) for a plain-HTTP deployment on port 8015. Deploy progress is logged to `/var/log/lurker-deploy.log` on the droplet.
 
+**Updating:** SSH in (or open the DigitalOcean web console) and run:
+
+```bash
+cd /opt/lurker
+docker compose pull && docker compose up -d
+```
+
+That's the same command whether or not you enabled HTTPS — the deploy script records the Caddy overlay in `.env`, so `docker compose` picks it up automatically. Your `data/` directory is left untouched.
+
 ## Manual Install (without Docker)
 
 ```bash

@@ -167,16 +167,19 @@ deploy() {
     curl -fsSL -o docker-compose.caddy.yml "$REPO_RAW/docker-compose.caddy.yml"
     curl -fsSL -o Caddyfile "$REPO_RAW/deploy/Caddyfile"
 
-    # Compose interpolates these into docker-compose.caddy.yml, and Caddy
-    # reads them from its container environment to fill the Caddyfile.
+    # Compose interpolates LURKER_DOMAIN/ACME_EMAIL into docker-compose.caddy.yml
+    # (and Caddy reads them to fill the Caddyfile). COMPOSE_FILE records the
+    # overlay so plain `docker compose` commands — including future updates —
+    # pick up Caddy automatically, no `-f` flags needed.
     cat > .env <<EOF
 LURKER_DOMAIN=${LURKER_DOMAIN}
 ACME_EMAIL=${ACME_EMAIL}
+COMPOSE_FILE=docker-compose.yml:docker-compose.caddy.yml
 EOF
 
-    compose -f docker-compose.yml -f docker-compose.caddy.yml pull
-    compose -f docker-compose.yml -f docker-compose.caddy.yml up -d
-    compose -f docker-compose.yml -f docker-compose.caddy.yml ps
+    compose pull
+    compose up -d
+    compose ps
   else
     log "LURKER_DOMAIN is empty — deploying plain HTTP on port 8015."
     compose pull

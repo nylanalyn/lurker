@@ -36,6 +36,8 @@ docker compose pull
 docker compose up -d
 ```
 
+Run these from the directory holding your `docker-compose.yml`. If you used the [one-shot DigitalOcean deploy](README.md#deploy-on-digitalocean-one-shot), that's `/opt/lurker` — `cd` there first; the command is identical whether or not you enabled HTTPS.
+
 Lurker auto-migrates its SQLite schema on boot, so updates are a pull + restart. The `data/` directory is not touched.
 
 If something goes wrong, your `data/` directory still has your last-known-good state — back it up before major updates if you want a clean rollback path.
