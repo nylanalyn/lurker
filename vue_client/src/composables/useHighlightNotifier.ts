@@ -8,8 +8,9 @@
 // settings, so toast/sound delivery is fully decoupled from how the signal
 // was generated. Settings are read live so quick-toggles take effect at once.
 //
-// The in-app toast + sound fire only for a visible tab on a buffer other than
-// the active one — see shouldNotifyInApp for the two cases that suppress them.
+// The in-app toast + sound fire only for a visible tab when the event's
+// buffer isn't the one on screen — see shouldNotifyInApp for the three cases
+// that suppress them.
 
 import { useToastsStore, type ToastKind } from '../stores/toasts.js';
 import { useSettingsStore } from '../stores/settings.js';
@@ -78,8 +79,8 @@ function throttled(event: NotifyEvent, kind: ToastKind): boolean {
 // and not already looking at the buffer the event belongs to. Three things
 // suppress them:
 //
-//   - No document: a non-browser context can't show a toast at all. Treated
-//     as not notifiable, matching usePresence.currentVisible().
+//   - No document: a non-browser context (SSR, tests) has no DOM to render a
+//     toast into, so this returns false — matching usePresence.currentVisible().
 //   - Tab hidden: a hidden tab can't render a toast, and browsers throttle or
 //     defer a background tab's audio — so this path would fire unreliably (the
 //     toast/sound only "catch up" when the tab is refocused). The server-side
