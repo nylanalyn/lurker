@@ -44,11 +44,9 @@ docker compose up -d
 
 Then open <http://localhost:8015> and create your admin account. Username + password is the default; passkeys are optional. See [SELF_HOSTING.md](docs/SELF_HOSTING.md) for the full guide — reverse proxy + HTTPS, enabling passkeys, push notifications, updating, and backups.
 
-## Deploy on DigitalOcean (one-shot)
+## Deploy on DigitalOcean
 
 Stand up a public, HTTPS-enabled Lurker on a fresh droplet from a single pasted script — no SSH required, with passkeys, web push, and TLS all configured for you. Step-by-step instructions are in **[docs/digitalocean.md](docs/digitalocean.md)**.
-
-[![Watch the Lurker DigitalOcean deployment walkthrough](docs/assets/yt-tutorial-thumb.png)](https://youtu.be/L730O7KNGlA)
 
 ## Manual Install (without Docker)
 
@@ -77,12 +75,8 @@ npm run dev
 # Community
 
 - Chat in **#lurker** on [Libera.Chat](https://libera.chat).
-- Follow what's planned and in progress on the [project kanban](https://kanban.bradroot.me/projects/12/45#share-auth-token=heTq3lrceDTKVlNYHKTH6MPaDqA2pJowusiqETTL).
+- Discuss Lurker and read my devlog over on [The Eye of Providence](https://discuss.bradroot.me/tags/c/projects/13/lurker/39).
 - Say hi — I'm **amiantos** on Libera.Chat and [MansionNET](https://inthemansion.com).
-
-# Why does this exist?
-
-When I got back into IRC, I started off with [thelounge](https://github.com/thelounge/thelounge) but felt like it was kind of ugly, push notifications were very flaky, it was missing features, and development seemed to be stagnant. So I switched to [weechat](https://github.com/weechat) + [tmux](https://github.com/tmux/tmux) for a while, which looked and felt a lot better, but I missed being able to use IRC from my phone. Long story short, I had no choice but to make my own client, and with the help of some new friends on IRC, I believe I likely made one of the nicest IRC clients you've ever used. Try it out, and let me know what you think.
 
 # License
 
