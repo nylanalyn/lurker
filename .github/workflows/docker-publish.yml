@@ -1,4 +1,4 @@
-name: Publish amiantos/lurker
+name: ghcr.io/amiantos/lurker
 
 on:
   push:
