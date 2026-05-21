@@ -8,9 +8,8 @@
 // settings, so toast/sound delivery is fully decoupled from how the signal
 // was generated. Settings are read live so quick-toggles take effect at once.
 //
-// Both toast and sound are skipped when the user is already viewing the
-// event's buffer in the foreground tab/window — the message is in plain
-// view, so an alert would be redundant (see viewingEventBuffer).
+// The in-app toast + sound fire only for a visible tab on a buffer other than
+// the active one — see shouldNotifyInApp for the two cases that suppress them.
 
 import { useToastsStore, type ToastKind } from '../stores/toasts.js';
 import { useSettingsStore } from '../stores/settings.js';
@@ -74,24 +73,28 @@ function throttled(event: NotifyEvent, kind: ToastKind): boolean {
   return false;
 }
 
-// True when the user is already looking at the buffer this event belongs to:
-// the Lurker tab/window is in the foreground AND the event's buffer is the
-// active one. The message is materializing in plain view, so a toast + sound
-// would be redundant — Discord and Slack mute the focused channel the same
-// way. Push is unaffected: it's gated server-side and only fires when the
-// user has no visible client at all (wsHub.maybePush).
+// The in-app toast + sound only reach a user whose tab is in the foreground.
+// Two cases produce no in-app notification:
 //
-// "Foreground" is the Page Visibility API — the same signal usePresence
-// reports to the server and the push gate keys off, so toast suppression and
-// push delivery agree on what "present" means. document.hasFocus() would
-// additionally catch "Lurker visible but behind another window", but it has
-// no change event and is unreliable for installed PWAs (it can report a
-// backgrounded window as still focused), so we use the coarser but dependable
-// visibility signal instead.
-function viewingEventBuffer(event: NotifyEvent): boolean {
-  if (typeof document === 'undefined' || document.hidden) return false;
+//   - Tab hidden: a hidden tab can't render a toast, and browsers throttle or
+//     defer a background tab's audio — so this path would fire unreliably (the
+//     toast/sound only "catch up" when the tab is refocused). The server-side
+//     push owns the hidden case: wsHub.maybePush fires precisely when the user
+//     has no visible client. Letting the in-app path fire here too would just
+//     double up with push, badly.
+//   - Active buffer: the message is already materializing in plain view, so an
+//     alert would be redundant (issue #50) — Discord and Slack mute the
+//     focused channel the same way.
+//
+// Visibility is the Page Visibility API — the same signal usePresence reports
+// to the server — so the in-app path and the push path agree on "present" and
+// never both fire for one event. document.hasFocus() would also catch "Lurker
+// visible but behind another window", but it has no change event and is
+// unreliable for installed PWAs, so we use the dependable visibility signal.
+function shouldNotifyInApp(event: NotifyEvent): boolean {
+  if (typeof document !== 'undefined' && document.hidden) return false;
   const networks = useNetworksStore();
-  return networks.activeKey === `${event.networkId}::${event.target}`;
+  return networks.activeKey !== `${event.networkId}::${event.target}`;
 }
 
 export function notifyForEvent(event: NotifyEvent | null | undefined): void {
@@ -99,9 +102,9 @@ export function notifyForEvent(event: NotifyEvent | null | undefined): void {
   const kindKey = pickKindKey(event);
   if (!kindKey) return;
 
-  // Already viewing this conversation in the foreground → no toast, no sound.
-  // The message lands in view on its own (see viewingEventBuffer).
-  if (viewingEventBuffer(event)) return;
+  // Toast + sound only for a visible tab on a non-active buffer: a hidden tab
+  // is the push path's job, and the active buffer is already in plain view.
+  if (!shouldNotifyInApp(event)) return;
 
   // Ignored sender → no toast, no sound. Push is gated server-side in
   // wsHub.maybePush since push fires while no client is open and a
