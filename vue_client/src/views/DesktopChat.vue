@@ -37,7 +37,7 @@
         </button>
       </div>
       <BufferList v-if="showChannels" />
-      <div class="sidebar-foot">
+      <div ref="footEl" class="sidebar-foot" :class="{ 'foot-wrapped': footWrapped }">
         <RouterLink class="link" to="/settings" title="Settings"
           ><i class="fa-solid fa-gear"></i
         ></RouterLink>
@@ -148,7 +148,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import type { Network } from '../stores/networks.js';
 import type { BufferLike } from '../composables/useBufferActions.js';
 import type { Buffer } from '../stores/buffers.js';
@@ -255,6 +255,31 @@ useKeyboardShortcuts({
 });
 
 const showChannels = computed(() => settings.effective('look.layout.show_channel_list'));
+
+// Sidebar-foot wrap detector. At large `look.font.size` settings the six icons
+// overflow the fixed 220px sidebar and flex-wrap to a second row. Browser's
+// natural wrap packs as-many-as-fit on row 1 (5+1 or 4+2 looks lopsided);
+// we'd rather show a clean 3+3 split. Measure offsetTop of first vs last
+// icon in the natural flex layout — when they differ, the row wrapped, and
+// `.foot-wrapped` swaps the flex layout for a 3-column grid. The class is
+// stripped before measuring so we read the flex state, not our own override
+// (otherwise the icons would always be on different rows and we'd be stuck
+// in 3+3 even after the user shrinks the font back down).
+const footEl = ref<HTMLElement | null>(null);
+const footWrapped = ref(false);
+async function measureFootWrap() {
+  const el = footEl.value;
+  if (!el || el.children.length < 2) return;
+  if (footWrapped.value) {
+    footWrapped.value = false;
+    await nextTick();
+  }
+  const first = (el.children[0] as HTMLElement).offsetTop;
+  const last = (el.children[el.children.length - 1] as HTMLElement).offsetTop;
+  footWrapped.value = first !== last;
+}
+watch(() => settings.effective('look.font.size'), () => void measureFootWrap());
+onMounted(measureFootWrap);
 
 // User count for the active channel buffer. Sits in the topic bar (next to
 // the members-toggle button) rather than the status bar — the count is a
@@ -426,6 +451,16 @@ useChatBootstrap({ onJump: onJumpToMessage });
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+/* When the icons wrap, swap to a 3-column grid so the six icons split
+   evenly into 2 rows of 3 instead of the browser's natural "as many as fit
+   then leftovers" packing (which lands at 5+1 or 4+2 at borderline fonts).
+   Only kicks in when the foot is expanded — the collapsed rail's own
+   flex-column override below takes precedence. */
+.sidebar:not(.collapsed) .sidebar-foot.foot-wrapped {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  justify-items: center;
 }
 /* Collapsed rail: hide the brand, swap the foot to a vertical stack, and
    center everything in the 36px column. Foot icons keep their muscle-memory

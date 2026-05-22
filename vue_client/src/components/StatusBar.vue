@@ -269,7 +269,13 @@ function onReturnToPresent() {
   display: flex;
   align-items: center;
   gap: 1ch;
-  padding: 1ch 12px 0;
+  /* 8px (not 1ch) so the bar's height grows with the font only through its
+     content, not through padding that drifts on the `ch` unit. With 8px
+     padding the bar's top border lines up exactly with the sidebar-foot's
+     top border when the foot wraps to two rows — `1ch` would only match at
+     fonts where `0`-glyph width ≈ 8px (i.e. default ~14px), and drift up
+     to 8px out at very large fonts. */
+  padding: 8px 12px 0;
   border-top: 1px solid var(--border);
   color: var(--fg-muted);
   white-space: nowrap;
