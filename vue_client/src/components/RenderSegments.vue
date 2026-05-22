@@ -6,6 +6,10 @@
 <template>
   <template v-for="(seg, i) in segments" :key="i">
     <SpoilerText v-if="seg.spoiler" :seg="seg" />
+    <!-- @click.stop: this component renders inside clickable rows (a history
+         row jumps to the message on click), and a link activation shouldn't
+         also fire the row's handler. Propagation only — the link still
+         opens. -->
     <a
       v-else-if="seg.url"
       class="msg-link"
@@ -13,6 +17,7 @@
       target="_blank"
       rel="noreferrer noopener"
       :style="styleFor(seg)"
+      @click.stop
       >{{ seg.text }}</a
     >
     <span v-else-if="hasStyle(seg)" :style="styleFor(seg)">{{ seg.text }}</span>
