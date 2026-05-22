@@ -31,6 +31,12 @@
           }}</span>
         </div>
 
+        <!-- Touch delay (200ms, touch-only) so a quick swipe over the pinned
+             section scrolls the channel list instead of starting a reorder.
+             Press-and-hold still initiates drag — the iOS/Discord/Slack
+             reorder convention. touchStartThreshold cancels the pending drag
+             if the finger moves more than 5px during the delay, so scroll
+             intent is recognised early. Desktop mouse drag stays instant. -->
         <draggable
           v-if="(pinnedBufsByNet[net.id] || []).length"
           :list="pinnedBufsByNet[net.id]"
@@ -39,6 +45,9 @@
           class="channels pinned"
           :animation="120"
           ghost-class="drag-ghost"
+          :delay="200"
+          :delay-on-touch-only="true"
+          :touch-start-threshold="5"
           @start="dragging = true"
           @end="onPinDragEnd(net.id)"
         >
