@@ -8,8 +8,8 @@
 //
 // A shortcode is `:name:` where `name` is one or more of `[a-z0-9_+-]` — the
 // gemoji character set (`:+1:`, `:e-mail:`, `:thumbsup:`). Matching is
-// case-insensitive; gemoji names are lowercase, so a typed `:Bone:` resolves
-// once the caller lowercases the captured name.
+// case-insensitive: the captured `name` is lowercased before it's returned,
+// so a typed `:Bone:` resolves straight against the (lowercase) gemoji table.
 //
 // The opening `:` must not sit immediately behind another shortcode
 // character, so a clock like `12:00` or an `http://` URL never reads as a
@@ -49,8 +49,10 @@ export function findCompletedShortcode(text: string, caret: number): ShortcodeTo
   return { name: m[1].toLowerCase(), start: caret - m[1].length - 2, end: caret };
 }
 
-// Rank shortcode `names` against `query` for the suggester. Matching is
-// case-insensitive: an exact hit sorts first, then prefix matches, then
+// Rank shortcode `names` against `query` for the suggester. `names` are
+// expected lowercase (they come straight from the gemoji table's keys); only
+// `query` is lowercased here, which is what makes matching case-insensitive
+// from the typist's side. An exact hit sorts first, then prefix matches, then
 // substring matches; non-matches drop out. Within a tier the shorter name
 // wins (a tighter match reads as more relevant), then alphabetical so the
 // order is stable.
@@ -64,16 +66,17 @@ export function rankShortcodes(names: string[], query: string): string[] {
     scored.push({ name, rank: name === q ? 0 : idx === 0 ? 1 : 2 });
   }
   scored.sort(
-    (a, b) => a.rank - b.rank || a.name.length - b.name.length || (a.name < b.name ? -1 : 1),
+    (a, b) => a.rank - b.rank || a.name.length - b.name.length || a.name.localeCompare(b.name),
   );
   return scored.map((s) => s.name);
 }
 
 // Lazy gateway to the emoji table. The ~1,900-entry map is its own chunk; the
-// first `:`-keystroke triggers the dynamic import and every later caller
-// (suggester + inline auto-convert) shares this one cached promise. A failed
-// import (offline, etc.) clears the cache so the next caller retries rather
-// than being stuck with a permanently-rejected promise.
+// import is kicked off the first time a caller actually needs the table — the
+// suggester once a `:query` is 2+ characters, or the inline auto-convert on a
+// completed `:name:` — and every later caller shares this one cached promise.
+// A failed import (offline, etc.) clears the cache so the next caller retries
+// rather than being stuck with a permanently-rejected promise.
 let emojiModule: Promise<typeof import('./emojiData.js')> | null = null;
 export function loadEmoji(): Promise<typeof import('./emojiData.js')> {
   if (!emojiModule) {

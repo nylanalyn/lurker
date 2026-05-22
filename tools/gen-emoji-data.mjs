@@ -39,8 +39,9 @@ const file = `// Copyright (c) 2026 Brad Root
 // shared by GitHub, Slack and Discord. ${data.length} emoji, ${names.length} shortcode aliases.
 //
 // This module is deliberately a separate chunk: it is dynamically imported
-// only when the user first types a \`:\` (see \`loadEmoji\` in
-// emojiShortcodes.ts), so its weight never lands in the initial bundle.
+// the first time a \`:shortcode:\` query actually needs the table (see
+// \`loadEmoji\` in emojiShortcodes.ts), so its weight never lands in the
+// initial bundle.
 
 import { rankShortcodes } from './emojiShortcodes.js';
 

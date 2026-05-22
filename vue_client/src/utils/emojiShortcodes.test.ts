@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import { describe, it, expect } from 'vitest';
-import { findActiveShortcode, findCompletedShortcode, rankShortcodes } from './emojiShortcodes.js';
+import {
+  findActiveShortcode,
+  findCompletedShortcode,
+  loadEmoji,
+  rankShortcodes,
+} from './emojiShortcodes.js';
 
 describe('findActiveShortcode', () => {
   it('finds an in-progress shortcode ending at the caret', () => {
@@ -32,9 +37,18 @@ describe('findActiveShortcode', () => {
     expect(findActiveShortcode('http://x', 8)).toBeNull();
   });
 
-  it('does not match ASCII smileys', () => {
-    // `)` is not a shortcode character, so the run never reaches the caret.
+  it('returns null for ASCII smileys ending in punctuation', () => {
+    // `)` `(` `/` are not shortcode characters, so the run never reaches the
+    // caret and no token is formed.
     expect(findActiveShortcode(':-)', 3)).toBeNull();
+    expect(findActiveShortcode(':-(', 3)).toBeNull();
+    expect(findActiveShortcode(':-/', 3)).toBeNull();
+  });
+
+  it('parses a letter-only smiley tail as a token, harmlessly', () => {
+    // `:-D` is all shortcode characters, so it does form the token `-d` — but
+    // that is not a real shortcode, so the suggester finds nothing and the
+    // closing-colon auto-convert never sees a match. Inert, not converted.
     expect(findActiveShortcode(':-D', 3)?.name).toBe('-d');
   });
 
@@ -99,5 +113,17 @@ describe('rankShortcodes', () => {
   it('excludes non-matches', () => {
     expect(rankShortcodes(names, 'smi')).toEqual(['smile']);
     expect(rankShortcodes(names, 'zzz')).toEqual([]);
+  });
+});
+
+describe('loadEmoji', () => {
+  it('lazily loads the emoji module and caches the promise', async () => {
+    // Two calls hand back the same in-flight/settled promise — the table is
+    // fetched once and shared by the suggester and the inline auto-convert.
+    const first = loadEmoji();
+    expect(loadEmoji()).toBe(first);
+    const mod = await first;
+    expect(typeof mod.searchEmoji).toBe('function');
+    expect(typeof mod.emojiForShortcode).toBe('function');
   });
 });
