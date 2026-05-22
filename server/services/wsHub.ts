@@ -175,7 +175,7 @@ function isInQuietWindow(currentMin: number, startMin: number, endMin: number): 
 const DM_ELIGIBLE_TYPES = new Set(['message', 'action', 'notice']);
 
 // IRC channel names start with '#' (or '&' for server-local channels).
-function isChannelTarget(target: string): boolean {
+export function isChannelTarget(target: string): boolean {
   return target.startsWith('#') || target.startsWith('&');
 }
 
@@ -230,6 +230,63 @@ function computeUnreadFor(_userId: number, networkId: number, target: string, la
     // Both counts are now indexed queries — no scan cap, no undercount.
     highlightsCapped: false,
   };
+}
+
+// Builds a one-off `backlog` frame for a single buffer — used when a closed
+// buffer is reopened (the user clicked its channel name). Unlike the snapshot
+// loop this ignores the resume cursor and always ships the recent slice; the
+// client dedupes by id, so it's safe even if the buffer is already open.
+export function buildBufferBacklog(userId: number, networkId: number, target: string): WsPayload {
+  const conn = ircManager.getConnection(userId, networkId);
+  const events = listMessages(networkId, target, { limit: 200 }).map((e) =>
+    decorateMessage(userId, e),
+  );
+  const lastReadId = getReadState(userId, networkId, target);
+  const counts = computeUnreadFor(userId, networkId, target, lastReadId);
+  return {
+    kind: 'backlog',
+    networkId,
+    target,
+    events,
+    speakers: listSpeakers(networkId, target),
+    // A channel counts as joined only while a live connection is tracking it;
+    // a stopped/offline network has no connection, so treat it as parted
+    // rather than refusing to ship the history at all.
+    joined: isChannelTarget(target) ? !!conn?.channels.has(target.toLowerCase()) : true,
+    lastReadId: counts.lastReadId,
+    unread: counts.unread,
+    highlights: counts.highlights,
+    highlightsCapped: counts.highlightsCapped,
+    inputHistory: listRecentInputHistory(userId, networkId, target, 200),
+  };
+}
+
+// Handles a client `open-buffer` request (a clicked channel name). Resolves
+// the requested target against buffers that already have persisted history —
+// case-insensitively, since IRC channel names are case-insensitive but
+// message rows store one canonical casing. A match (even a since-/closed
+// buffer) is reopened and re-seeded without a re-JOIN; a channel with no
+// history anywhere is one we've never visited, so it gets joined. Either way
+// the requesting socket is told the canonical target to focus, so it never
+// has to guess the casing.
+export function handleOpenBuffer(
+  ws: LurkerWebSocket,
+  userId: number,
+  networkId: number,
+  requested: string,
+): void {
+  if (!networkId || !requested || requested.startsWith(':server:')) return;
+  const canonical = listBufferTargets(networkId).find(
+    (t) => t.toLowerCase() === requested.toLowerCase(),
+  );
+  if (canonical) {
+    reopenBuffer(userId, networkId, canonical);
+    send(ws, buildBufferBacklog(userId, networkId, canonical));
+    send(ws, { kind: 'buffer-opened', networkId, target: canonical });
+  } else if (isChannelTarget(requested)) {
+    ircManager.joinChannel(userId, networkId, requested);
+    send(ws, { kind: 'buffer-opened', networkId, target: requested });
+  }
 }
 
 // Per-user socket bookkeeping lives at module scope so the verb registry can
@@ -725,40 +782,6 @@ export function attachWsHub(httpServer: HttpServer, sessionSecret: string) {
     ws.sinceId = maxSentId;
   }
 
-  // One-off backlog frame for a single buffer — used when a closed buffer is
-  // reopened (the user clicked its channel name). Unlike sendSnapshot this
-  // ignores the resume cursor and always ships the recent slice; the client
-  // dedupes by id, so this is safe even if the buffer is already open.
-  function sendBufferBacklog(
-    ws: LurkerWebSocket,
-    userId: number,
-    networkId: number,
-    target: string,
-  ): void {
-    const conn = ircManager.getConnection(userId, networkId);
-    const events = listMessages(networkId, target, { limit: 200 }).map((e) =>
-      decorateMessage(userId, e),
-    );
-    const lastReadId = getReadState(userId, networkId, target);
-    const counts = computeUnreadFor(userId, networkId, target, lastReadId);
-    send(ws, {
-      kind: 'backlog',
-      networkId,
-      target,
-      events,
-      speakers: listSpeakers(networkId, target),
-      // A channel counts as joined only while a live connection is tracking
-      // it; a stopped/offline network has no connection, so treat it as
-      // parted rather than refusing to ship the history at all.
-      joined: isChannelTarget(target) ? !!conn?.channels.has(target.toLowerCase()) : true,
-      lastReadId: counts.lastReadId,
-      unread: counts.unread,
-      highlights: counts.highlights,
-      highlightsCapped: counts.highlightsCapped,
-      inputHistory: listRecentInputHistory(userId, networkId, target, 200),
-    });
-  }
-
   function handleClientMessage(ws: LurkerWebSocket, user: User, msg: WsPayload): void {
     const userId = user.id;
     // Any message that carries a networkId must reference a network the caller
@@ -820,32 +843,15 @@ export function attachWsHub(httpServer: HttpServer, sessionSecret: string) {
       case 'join':
         ircManager.joinChannel(userId, msg.networkId as number, msg.channel as string);
         break;
-      case 'open-buffer': {
-        // A clicked channel name. Resolve it against buffers that already
-        // have persisted history — case-insensitively, since IRC channel
-        // names are case-insensitive but message rows store one canonical
-        // casing. A match (even a since-/closed buffer) is reopened and
-        // re-seeded without a re-JOIN — mirrors IRCCloud: clicking a channel
-        // you've been in just takes you to its buffer. A channel with no
-        // history anywhere is one we've never visited, so it gets joined.
-        // Either way we reply `buffer-opened` with the resolved target so the
-        // requesting tab focuses the right buffer without guessing the casing.
-        const networkId = Number(msg.networkId);
-        const requested = typeof msg.target === 'string' ? msg.target : '';
-        if (!networkId || !requested || requested.startsWith(':server:')) break;
-        const canonical = listBufferTargets(networkId).find(
-          (t) => t.toLowerCase() === requested.toLowerCase(),
+      case 'open-buffer':
+        // A clicked channel name — handleOpenBuffer resolves reopen-vs-join.
+        handleOpenBuffer(
+          ws,
+          userId,
+          Number(msg.networkId),
+          typeof msg.target === 'string' ? msg.target : '',
         );
-        if (canonical) {
-          reopenBuffer(userId, networkId, canonical);
-          sendBufferBacklog(ws, userId, networkId, canonical);
-          send(ws, { kind: 'buffer-opened', networkId, target: canonical });
-        } else if (isChannelTarget(requested)) {
-          ircManager.joinChannel(userId, networkId, requested);
-          send(ws, { kind: 'buffer-opened', networkId, target: requested });
-        }
         break;
-      }
       case 'part':
         ircManager.partChannel(
           userId,

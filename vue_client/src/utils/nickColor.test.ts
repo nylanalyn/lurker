@@ -105,6 +105,11 @@ describe('splitTextByTokens — channel detection', () => {
     ]);
   });
 
+  it('ignores a token that trims down to just the bare prefix', () => {
+    // "#." matches the regex but trims to "#" — not enough to be a channel.
+    expect(parse('look at #. ok')).toEqual([{ text: 'look at #. ok' }]);
+  });
+
   it('trims trailing sentence punctuation off a channel', () => {
     expect(parse('see (#foo).')).toEqual([
       { text: 'see (' },
