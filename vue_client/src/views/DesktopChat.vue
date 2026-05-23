@@ -264,12 +264,20 @@ const showChannels = computed(() => settings.effective('look.layout.show_channel
 // `.foot-wrapped` swaps the flex layout for a 3-column grid. The class is
 // stripped before measuring so we read the flex state, not our own override
 // (otherwise the icons would always be on different rows and we'd be stuck
-// in 3+3 even after the user shrinks the font back down).
+// in 3+3 even after the user shrinks the font back down). The detector
+// also bails out and clears the flag while the sidebar is collapsed: the
+// collapsed rail uses `flex-direction: column` so every icon stacks on its
+// own row, which would otherwise stick the flag true and force the 3-col
+// grid on re-expand even at default font.
 const footEl = ref<HTMLElement | null>(null);
 const footWrapped = ref(false);
 async function measureFootWrap() {
   const el = footEl.value;
   if (!el || el.children.length < 2) return;
+  if (!showChannels.value) {
+    footWrapped.value = false;
+    return;
+  }
   if (footWrapped.value) {
     footWrapped.value = false;
     await nextTick();
@@ -282,6 +290,14 @@ watch(
   () => settings.effective('look.font.size'),
   () => void measureFootWrap(),
 );
+// Re-measure when the sidebar expands — we cleared the flag on collapse, so
+// without this the foot would stay flex-wrapped (5+1 / 4+2) even at fonts
+// that triggered the grid before the user collapsed.
+watch(showChannels, async (open) => {
+  if (!open) return;
+  await nextTick();
+  void measureFootWrap();
+});
 onMounted(measureFootWrap);
 
 // User count for the active channel buffer. Sits in the topic bar (next to

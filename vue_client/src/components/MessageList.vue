@@ -1143,7 +1143,8 @@ watch(
   padding: 0;
   border-radius: 3px;
 }
-.line:hover .row-actions {
+.line:hover .row-actions,
+.row-actions:focus-visible {
   opacity: 1;
   pointer-events: auto;
 }
