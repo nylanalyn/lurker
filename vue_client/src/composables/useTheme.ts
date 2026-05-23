@@ -3,6 +3,7 @@
 
 import { watchEffect } from 'vue';
 import { useSettingsStore } from '../stores/settings.js';
+import { useViewport } from './useViewport.js';
 
 // Maps each settings key to the CSS custom property it controls. Anything in
 // here is live-rewritten on :root whenever the settings store changes, so the
@@ -35,6 +36,7 @@ export function useTheme(): void {
   if (installed) return;
   installed = true;
   const settings = useSettingsStore();
+  const { isMobile } = useViewport();
   const root = document.documentElement;
 
   watchEffect(() => {
@@ -42,7 +44,11 @@ export function useTheme(): void {
       root.style.setProperty(cssVar, String(settings.effective(key)));
     }
     root.style.setProperty('--mono', String(settings.effective('look.font.family')));
-    root.style.setProperty('--font-size', `${settings.effective('look.font.size')}px`);
+    // Mobile gets its own size so a large desktop setting (and the large icons
+    // that come with it) doesn't have to follow you onto a phone. The viewport
+    // breakpoint flips live, so resizing across it re-applies the right value.
+    const fontSizeKey = isMobile.value ? 'look.font.size.mobile' : 'look.font.size';
+    root.style.setProperty('--font-size', `${settings.effective(fontSizeKey)}px`);
     root.style.setProperty('--font-weight', String(settings.effective('look.font.weight')));
     const macSmoothing = !!settings.effective('look.font.smoothing_macos');
     root.style.setProperty(

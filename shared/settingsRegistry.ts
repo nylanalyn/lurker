@@ -98,7 +98,23 @@ export const REGISTRY: readonly SettingOption[] = Object.freeze([
     min: 9,
     max: 32,
     default: 14,
-    description: 'Base font size in pixels for the whole UI.',
+    description:
+      'Base font size in pixels for the whole UI. ' +
+      'Phone-sized viewports use `look.font.size.mobile` instead.',
+  },
+  {
+    key: 'look.font.size.mobile',
+    label: 'Font size (mobile)',
+    category: 'appearance',
+    group: 'fonts',
+    type: 'int',
+    min: 9,
+    max: 32,
+    default: 14,
+    description:
+      'Base font size in pixels used on phone-sized viewports (≤768px). ' +
+      'Lets the desktop and mobile UIs scale independently — a large desktop ' +
+      'setting need not be inherited on a phone, or vice versa.',
   },
   {
     key: 'look.font.weight',
