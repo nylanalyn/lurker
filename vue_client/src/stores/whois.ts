@@ -44,7 +44,6 @@ export interface WhoisData {
 
 export interface WhoisEntry {
   data: WhoisData;
-  receivedAt: string;
 }
 
 export interface WhoisViewerState {
@@ -69,10 +68,7 @@ export const useWhoisStore = defineStore('whois', {
     applyResult(networkId: number | string, data: WhoisData) {
       const nick = (data && (data.nick as string)) || '';
       if (!networkId || !nick) return;
-      this.byKey[key(networkId, nick)] = {
-        data,
-        receivedAt: new Date().toISOString(),
-      };
+      this.byKey[key(networkId, nick)] = { data };
     },
     openViewer(networkId: number | string, nick: string) {
       if (!networkId || !nick) return;

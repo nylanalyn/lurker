@@ -6,9 +6,9 @@
 <!--
   Replaces the old /whois motd dump (issue #92). Opens from the slash
   command, the nicklist menu, the DM context menu, and the DM header.
-  Renders the cached whois entry immediately and shows a refreshing
-  indicator until the new result lands; if no whois ever arrives the
-  empty state explains why.
+  Renders the cached whois entry immediately and silently overwrites it
+  when the new reply arrives; while we have nothing cached the empty
+  state shows a spinner (or "offline" if MONITOR already knows).
 
   Note editor lives in NickNoteModal — the "Edit note" button opens
   that instead of duplicating the editor here, so the editor has a
@@ -366,11 +366,10 @@ function onRefresh() {
 function copyHostmask() {
   const text = hostmask.value;
   if (!text) return;
-  try {
-    void navigator.clipboard?.writeText(text);
-  } catch (_) {
-    /* ignore — older browsers without clipboard API just don't copy */
-  }
+  // Best-effort: writeText returns a rejected promise when permissions are
+  // denied (and the clipboard API itself can be missing on older browsers),
+  // so swallow both paths quietly — copy isn't load-bearing.
+  navigator.clipboard?.writeText(text).catch(() => {});
 }
 </script>
 
