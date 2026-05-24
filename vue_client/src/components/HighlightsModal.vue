@@ -16,27 +16,23 @@
     </template>
 
     <p v-if="store.error" class="error inline">{{ store.error }}</p>
-    <ul v-if="visibleItems.length" class="match-list">
+    <ul v-if="visibleItems.length" ref="listEl" class="match-list" @scroll="onScroll">
       <HistoryMessageRow
         v-for="m in visibleItems"
         :key="`${m.networkId}::${m.target}::${m.id}`"
         :message="m"
         @jump="onJump"
       />
+      <li v-if="store.loading" class="more">Loading…</li>
     </ul>
     <p v-else-if="store.loading" class="empty">Loading…</p>
     <p v-else-if="store.items.length" class="empty">All highlights are from ignored users.</p>
     <p v-else class="empty">No highlights yet.</p>
-    <footer v-if="store.hasMore || store.loading" class="foot">
-      <button class="link" :disabled="store.loading || !store.hasMore" @click="store.loadMore()">
-        {{ store.loading ? 'Loading…' : 'Load more' }}
-      </button>
-    </footer>
   </AppModal>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import AppModal from './AppModal.vue';
 import HistoryMessageRow, { type HistoryMessage } from './HistoryMessageRow.vue';
 import { useSettingsStore } from '../stores/settings.js';
@@ -52,9 +48,19 @@ const settings = useSettingsStore();
 const store = useHighlightsStore();
 const ignores = useIgnoresStore();
 
+const listEl = ref<HTMLUListElement | null>(null);
+
 const visibleItems = computed(() =>
   store.items.filter((m) => !ignores.isIgnored(m.networkId, m.nick, m.userhost ?? '')),
 );
+
+function onScroll(): void {
+  const el = listEl.value;
+  if (!el) return;
+  if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) {
+    store.loadMore();
+  }
+}
 
 const soundEnabled = computed(() => !!settings.effective('notifications.highlight.sound.enabled'));
 
@@ -106,6 +112,12 @@ function onJump(m: HistoryMessage): void {
   flex: 1;
   min-height: 0;
 }
+.more {
+  text-align: center;
+  color: var(--fg-muted);
+  font-style: italic;
+  padding: 8px;
+}
 .empty {
   text-align: center;
   color: var(--fg-muted);
@@ -116,11 +128,5 @@ function onJump(m: HistoryMessage): void {
   color: var(--bad);
   padding: 8px 0;
   margin: 0;
-}
-.foot {
-  border-top: 1px solid var(--border);
-  padding: 8px 0;
-  display: flex;
-  justify-content: center;
 }
 </style>
