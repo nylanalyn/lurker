@@ -64,17 +64,6 @@
     </header>
     <header v-else-if="active" class="topic">
       <span class="buffer">{{ bufferLabel }}</span>
-      <button v-if="isServerBuffer" class="link" title="Edit network" @click="editActiveNetwork">
-        <i class="fa-solid fa-gear"></i>
-      </button>
-      <button
-        v-if="isServerBuffer"
-        class="link"
-        title="Browse channels"
-        @click="showChannelList = true"
-      >
-        <i class="fa-solid fa-list"></i>
-      </button>
       <template v-if="topic">
         <span class="sep">│</span>
         <button type="button" class="topic-text" title="View full topic" @click="showTopic = true">
@@ -82,11 +71,30 @@
         </button>
       </template>
       <button
+        v-if="isServerBuffer"
+        type="button"
+        class="link word server-right-start"
+        @click="showChannelList = true"
+      >
+        Channel List
+      </button>
+      <button v-if="isServerBuffer" type="button" class="link word" @click="toggleServerConnection">
+        {{ serverConnectActionLabel }}
+      </button>
+      <button
         v-if="showBufferCog"
         ref="bufferCogBtn"
         class="link buffer-cog"
         title="Buffer actions"
         @click="openBufferActions"
+      >
+        <i class="fa-solid fa-gear"></i>
+      </button>
+      <button
+        v-if="isServerBuffer"
+        class="link network-cog"
+        title="Edit network"
+        @click="editActiveNetwork"
       >
         <i class="fa-solid fa-gear"></i>
       </button>
@@ -367,6 +375,31 @@ function editActiveNetwork() {
   if (net) openEditNetwork(net);
 }
 
+// State-aware connect/disconnect for the server buffer header. We label the
+// button "Disconnect" only while we're confidently connected; every other
+// state (idle, connecting, reconnecting, disconnected, unknown) reads as
+// "Reconnect" because the action — fire a fresh connect — is the same in
+// each case, and "Reconnect" is what the user reaches for when something
+// looks stuck.
+const serverConnectionState = computed(() => {
+  if (!active.value || !isServerBuffer.value) return null;
+  return networks.states[active.value.networkId]?.state ?? null;
+});
+const serverConnectActionLabel = computed(() =>
+  serverConnectionState.value === 'connected' ? 'Disconnect' : 'Reconnect',
+);
+function toggleServerConnection() {
+  if (!active.value) return;
+  const id = active.value.networkId;
+  // Fire-and-forget — the button's label is driven by networks.states so
+  // success reflects itself. A failed call stays observable via the state
+  // (label doesn't flip), so we just log and let the user retry rather
+  // than wiring a toast through the topic bar for this case.
+  const p =
+    serverConnectionState.value === 'connected' ? networks.disconnect(id) : networks.reconnect(id);
+  p.catch((err) => console.error('[DesktopChat] toggle server connection failed', err));
+}
+
 useChatBootstrap({ onJump: onJumpToMessage });
 </script>
 
@@ -594,10 +627,15 @@ useChatBootstrap({ onJump: onJumpToMessage });
    label. The topic text shrinks first (it has min-width: 0 + ellipsis) so
    the cluster stays put. The cog claims the slack via margin-left:auto and
    the remaining elements follow it in DOM order. When the cog is absent
-   (server buffers), members-toggle's own margin-left:auto takes over.
-   Count sits to the right of the icon. */
-.topic .buffer-cog {
+   (server buffers), the server network-cog takes the same slot, or
+   members-toggle's own margin-left:auto takes over. Count sits to the
+   right of the icon. */
+.topic .buffer-cog,
+.topic .server-right-start {
   margin-left: auto;
+  padding-left: 8px;
+}
+.topic .network-cog {
   padding-left: 8px;
 }
 .topic .buffer-cog + .members-toggle {
@@ -607,6 +645,13 @@ useChatBootstrap({ onJump: onJumpToMessage });
 .topic .members-toggle {
   margin-left: auto;
   padding-left: 8px;
+}
+/* Word-button styling for the server-buffer affordances (Channel List,
+   Disconnect/Reconnect). They cluster on the right alongside the
+   network-cog — the first one (Channel List) carries margin-left:auto via
+   .server-right-start, and the rest follow it in DOM order. */
+.topic .link.word {
+  padding: 0 6px;
 }
 .topic .member-count {
   color: var(--fg-muted);
