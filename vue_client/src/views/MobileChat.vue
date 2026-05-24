@@ -50,14 +50,19 @@
         </button>
         <button
           v-if="isServerBuffer"
-          class="icon"
-          title="Browse channels"
+          type="button"
+          class="word-btn"
           @click="showChannelList = true"
         >
-          <i class="fa-solid fa-list"></i>
+          Channel List
         </button>
-        <button v-if="isServerBuffer" class="icon" title="Edit network" @click="editActiveNetwork">
-          <i class="fa-solid fa-gear"></i>
+        <button
+          v-if="isServerBuffer"
+          type="button"
+          class="word-btn"
+          @click="toggleServerConnection"
+        >
+          {{ serverConnectActionLabel }}
         </button>
         <button class="icon" title="Search messages" @click="showSearch = true">
           <i class="fa-solid fa-magnifying-glass"></i>
@@ -79,6 +84,9 @@
         </button>
         <button v-if="isChannel" class="icon" title="Members" @click="screen = 'members'">
           <i class="fa-solid fa-users"></i>
+        </button>
+        <button v-if="isServerBuffer" class="icon" title="Edit network" @click="editActiveNetwork">
+          <i class="fa-solid fa-gear"></i>
         </button>
       </header>
       <SystemConsole v-if="isSystemConsole" />
@@ -218,6 +226,27 @@ function editActiveNetwork() {
   showNetworkForm.value = true;
 }
 
+// State-aware connect/disconnect for the server buffer header. Mirrors the
+// desktop logic — "Disconnect" only while we're confidently connected;
+// everything else labels as "Reconnect" because a fresh connect is the
+// same action and that's what the user reaches for when things look stuck.
+const serverConnectionState = computed(() => {
+  if (!active.value || !isServerBuffer.value) return null;
+  return networks.states[active.value.networkId]?.state ?? null;
+});
+const serverConnectActionLabel = computed(() =>
+  serverConnectionState.value === 'connected' ? 'Disconnect' : 'Reconnect',
+);
+function toggleServerConnection() {
+  if (!active.value) return;
+  const id = active.value.networkId;
+  if (serverConnectionState.value === 'connected') {
+    void networks.disconnect(id);
+  } else {
+    void networks.reconnect(id);
+  }
+}
+
 function closeNetworkForm() {
   showNetworkForm.value = false;
   editingNetwork.value = null;
@@ -340,6 +369,23 @@ useChatBootstrap({ onJump: onJumpToMessage });
 }
 .icon.back {
   margin-left: -4px;
+}
+/* Word-button affordances for the server-buffer bar (Channel List,
+   Disconnect/Reconnect). Same accent treatment as .icon but text-shaped so
+   they fit alongside the global action icons without reading as another
+   ambiguous gear. Min-height matches .icon so they line up on the bar. */
+.word-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  padding: 4px 8px;
+  min-height: 36px;
+  white-space: nowrap;
+}
+.word-btn:hover {
+  color: var(--fg);
 }
 
 /* The buffer screen's MessageList + StatusBar + MessageInput chain mirrors

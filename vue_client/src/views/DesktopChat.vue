@@ -64,16 +64,11 @@
     </header>
     <header v-else-if="active" class="topic">
       <span class="buffer">{{ bufferLabel }}</span>
-      <button v-if="isServerBuffer" class="link" title="Edit network" @click="editActiveNetwork">
-        <i class="fa-solid fa-gear"></i>
+      <button v-if="isServerBuffer" type="button" class="link word" @click="showChannelList = true">
+        Channel List
       </button>
-      <button
-        v-if="isServerBuffer"
-        class="link"
-        title="Browse channels"
-        @click="showChannelList = true"
-      >
-        <i class="fa-solid fa-list"></i>
+      <button v-if="isServerBuffer" type="button" class="link word" @click="toggleServerConnection">
+        {{ serverConnectActionLabel }}
       </button>
       <template v-if="topic">
         <span class="sep">│</span>
@@ -87,6 +82,14 @@
         class="link buffer-cog"
         title="Buffer actions"
         @click="openBufferActions"
+      >
+        <i class="fa-solid fa-gear"></i>
+      </button>
+      <button
+        v-if="isServerBuffer"
+        class="link network-cog"
+        title="Edit network"
+        @click="editActiveNetwork"
       >
         <i class="fa-solid fa-gear"></i>
       </button>
@@ -367,6 +370,29 @@ function editActiveNetwork() {
   if (net) openEditNetwork(net);
 }
 
+// State-aware connect/disconnect for the server buffer header. We label the
+// button "Disconnect" only while we're confidently connected; every other
+// state (idle, connecting, reconnecting, disconnected, unknown) reads as
+// "Reconnect" because the action — fire a fresh connect — is the same in
+// each case, and "Reconnect" is what the user reaches for when something
+// looks stuck.
+const serverConnectionState = computed(() => {
+  if (!active.value || !isServerBuffer.value) return null;
+  return networks.states[active.value.networkId]?.state ?? null;
+});
+const serverConnectActionLabel = computed(() =>
+  serverConnectionState.value === 'connected' ? 'Disconnect' : 'Reconnect',
+);
+function toggleServerConnection() {
+  if (!active.value) return;
+  const id = active.value.networkId;
+  if (serverConnectionState.value === 'connected') {
+    void networks.disconnect(id);
+  } else {
+    void networks.reconnect(id);
+  }
+}
+
 useChatBootstrap({ onJump: onJumpToMessage });
 </script>
 
@@ -594,9 +620,11 @@ useChatBootstrap({ onJump: onJumpToMessage });
    label. The topic text shrinks first (it has min-width: 0 + ellipsis) so
    the cluster stays put. The cog claims the slack via margin-left:auto and
    the remaining elements follow it in DOM order. When the cog is absent
-   (server buffers), members-toggle's own margin-left:auto takes over.
-   Count sits to the right of the icon. */
-.topic .buffer-cog {
+   (server buffers), the server network-cog takes the same slot, or
+   members-toggle's own margin-left:auto takes over. Count sits to the
+   right of the icon. */
+.topic .buffer-cog,
+.topic .network-cog {
   margin-left: auto;
   padding-left: 8px;
 }
@@ -607,6 +635,13 @@ useChatBootstrap({ onJump: onJumpToMessage });
 .topic .members-toggle {
   margin-left: auto;
   padding-left: 8px;
+}
+/* Word-button styling for the server-buffer affordances (Channel List,
+   Disconnect/Reconnect). They sit inline next to the buffer label as
+   text actions, with a touch of separation so they don't read as part of
+   the label itself. */
+.topic .link.word {
+  padding: 0 6px;
 }
 .topic .member-count {
   color: var(--fg-muted);
