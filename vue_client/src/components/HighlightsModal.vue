@@ -32,7 +32,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import AppModal from './AppModal.vue';
 import HistoryMessageRow, { type HistoryMessage } from './HistoryMessageRow.vue';
 import { useSettingsStore } from '../stores/settings.js';
@@ -61,6 +61,22 @@ function onScroll(): void {
     store.loadMore();
   }
 }
+
+// If the entire loaded page is from ignored users the scroll container is not
+// rendered, so the user can't trigger pagination themselves — quietly fetch
+// the next page in their stead. Capped so a single very prolific ignored
+// source can't drag the modal into an unbounded fetch loop.
+const AUTO_FILL_MAX_PAGES = 5;
+let autoFillFetched = 0;
+watch(
+  () => [visibleItems.value.length, store.loading, store.hasMore] as const,
+  ([visible, loading, hasMore]) => {
+    if (visible === 0 && hasMore && !loading && autoFillFetched < AUTO_FILL_MAX_PAGES) {
+      autoFillFetched += 1;
+      store.loadMore();
+    }
+  },
+);
 
 const soundEnabled = computed(() => !!settings.effective('notifications.highlight.sound.enabled'));
 
