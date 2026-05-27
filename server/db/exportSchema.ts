@@ -134,8 +134,26 @@ export const EXPORT_TABLES = Object.freeze({
     // needs the messages id map. The importer auto-defers any table whose
     // fkRekey targets 'messages'. Settings-only imports drop these rows
     // (last_read_message_id is NOT NULL — no anchor, no row).
-    fkRekey: { user_id: 'users', network_id: 'networks', last_read_message_id: 'messages' },
-    columns: ['user_id', 'network_id', 'target', 'last_read_message_id', 'updated_at'],
+    fkRekey: {
+      user_id: 'users',
+      network_id: 'networks',
+      last_read_message_id: 'messages',
+      cleared_before_message_id: 'messages',
+    },
+    // cleared_before_message_id is a /clear marker, not the read pointer:
+    // if the boundary message can't be resolved (missing from the messages
+    // map), preserve the row with a NULL marker rather than dropping it
+    // and losing the still-valid last_read_message_id alongside.
+    fkRekeyNullable: ['cleared_before_message_id'],
+    columns: [
+      'user_id',
+      'network_id',
+      'target',
+      'last_read_message_id',
+      'updated_at',
+      'cleared_before_message_id',
+      'cleared_at',
+    ],
   },
 
   user_away_state: {

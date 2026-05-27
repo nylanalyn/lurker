@@ -60,3 +60,78 @@ describe('listReadStateForUser', () => {
     expect(map[`${net!.id}::#b`]).toBe(9);
   });
 });
+
+describe('setClearedState / getClearedState', () => {
+  it('returns the no-clear state when no row exists', () => {
+    const state = bufferReads.getClearedState(user.id, net!.id, '#never-cleared');
+    expect(state).toEqual({ clearedBeforeId: 0, clearedAt: null });
+  });
+
+  it('persists boundary id and timestamp, and round-trips', () => {
+    const ts = '2026-05-26T12:00:00.000Z';
+    const out = bufferReads.setClearedState(user.id, net!.id, '#c', 42, ts);
+    expect(out).toEqual({ clearedBeforeId: 42, clearedAt: ts });
+    expect(bufferReads.getClearedState(user.id, net!.id, '#c')).toEqual({
+      clearedBeforeId: 42,
+      clearedAt: ts,
+    });
+  });
+
+  it('does not clobber the read pointer when /clear writes to a row that also tracks read state', () => {
+    bufferReads.setReadState(user.id, net!.id, '#mixed', 80);
+    bufferReads.setClearedState(user.id, net!.id, '#mixed', 80, '2026-05-26T12:00:00.000Z');
+    expect(bufferReads.getReadState(user.id, net!.id, '#mixed')).toBe(80);
+    expect(bufferReads.getClearedState(user.id, net!.id, '#mixed').clearedBeforeId).toBe(80);
+  });
+
+  it('does not clobber the clear marker when setReadState writes to the same row', () => {
+    bufferReads.setClearedState(user.id, net!.id, '#mixed2', 50, '2026-05-26T12:00:00.000Z');
+    bufferReads.setReadState(user.id, net!.id, '#mixed2', 90);
+    expect(bufferReads.getClearedState(user.id, net!.id, '#mixed2')).toEqual({
+      clearedBeforeId: 50,
+      clearedAt: '2026-05-26T12:00:00.000Z',
+    });
+  });
+
+  it('boundary id <= 0 clears the marker (used by /clear off)', () => {
+    bufferReads.setClearedState(user.id, net!.id, '#undo', 25, '2026-05-26T12:00:00.000Z');
+    const out = bufferReads.setClearedState(user.id, net!.id, '#undo', 0, null);
+    expect(out).toEqual({ clearedBeforeId: 0, clearedAt: null });
+    expect(bufferReads.getClearedState(user.id, net!.id, '#undo')).toEqual({
+      clearedBeforeId: 0,
+      clearedAt: null,
+    });
+  });
+
+  it('overwrites an existing marker when /clear runs again', () => {
+    bufferReads.setClearedState(user.id, net!.id, '#again', 10, '2026-05-26T11:00:00.000Z');
+    const out = bufferReads.setClearedState(
+      user.id,
+      net!.id,
+      '#again',
+      30,
+      '2026-05-26T12:00:00.000Z',
+    );
+    expect(out).toEqual({ clearedBeforeId: 30, clearedAt: '2026-05-26T12:00:00.000Z' });
+  });
+});
+
+describe('listClearedStateForUser', () => {
+  it('returns only buffers with an active clear marker', () => {
+    bufferReads.setClearedState(user.id, net!.id, '#has', 100, '2026-05-26T12:00:00.000Z');
+    bufferReads.setReadState(user.id, net!.id, '#read-only', 5);
+    const map = bufferReads.listClearedStateForUser(user.id);
+    expect(map[`${net!.id}::#has`]).toEqual({
+      clearedBeforeId: 100,
+      clearedAt: '2026-05-26T12:00:00.000Z',
+    });
+    expect(map[`${net!.id}::#read-only`]).toBeUndefined();
+  });
+
+  it('drops a buffer after its clear is undone', () => {
+    bufferReads.setClearedState(user.id, net!.id, '#vanish', 7, '2026-05-26T12:00:00.000Z');
+    bufferReads.setClearedState(user.id, net!.id, '#vanish', 0, null);
+    const map = bufferReads.listClearedStateForUser(user.id);
+    expect(map[`${net!.id}::#vanish`]).toBeUndefined();
+  });
+});

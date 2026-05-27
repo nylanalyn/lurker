@@ -26,6 +26,12 @@
         — back (gone {{ formatDuration(row.awayAt ?? '', row.backAt ?? '') }}) —
       </div>
       <div v-else-if="row.divider === 'date'" class="notice date-divider">{{ row.dateStr }}</div>
+      <div v-else-if="row.divider === 'cleared'" class="notice cleared-divider">
+        cleared {{ formatDateTime(row.clearedAt ?? '') }}
+        <button type="button" class="cleared-undo" @click="onUnclearClick">
+          Show earlier messages
+        </button>
+      </div>
       <div
         v-else-if="row.consolidation"
         class="line"
@@ -170,7 +176,13 @@ import {
   useScrollState,
 } from '../composables/useScrollState.js';
 import type { RenderSegment } from '../utils/nickColor.js';
-import { formatTimestamp, formatDuration, formatDate, formatDayLabel } from '../utils/timestamp.js';
+import {
+  formatTimestamp,
+  formatDuration,
+  formatDate,
+  formatDateTime,
+  formatDayLabel,
+} from '../utils/timestamp.js';
 import { consolidateRows } from '../utils/consolidate.js';
 import type { ConsolidationGroup, NickEntry, RenameEntry } from '../../../shared/consolidate.js';
 import { collapseDisplay } from '../utils/collapseDisplay.js';
@@ -214,6 +226,7 @@ interface RenderRow {
   awayMessage?: string;
   awayAt?: string;
   backAt?: string;
+  clearedAt?: string;
   // Consolidation row (from consolidateRows)
   consolidation?: boolean;
   groups?: ConsolidationGroup[];
@@ -293,6 +306,15 @@ const nickSet = computed((): Set<string> => {
 
 function time(iso: string | undefined): string {
   return formatTimestamp(iso ?? '', (tsFormat.value as string) ?? '');
+}
+
+// Drops the /clear marker for the currently-active buffer. Wired to the
+// "Show earlier messages" button on the cleared divider; the server's
+// buffer-cleared fan-out echoes back and clearedBeforeId reverts to 0.
+function onUnclearClick(): void {
+  const b = buffer.value;
+  if (!b) return;
+  buffers.unclearBuffer(b.networkId, b.target);
 }
 
 function rowClass(row: RenderRow) {
@@ -453,6 +475,19 @@ const renderRows = computed((): RenderRow[] => {
   // time you're seeing this").
   let dividerInserted = dividerAfterId === 0;
 
+  // /clear marker. Filter is suppressed while the buffer is detached — a
+  // search/highlight jump shows context around its anchor regardless of the
+  // marker, so the user can peek without losing their fresh slate. clearedAt
+  // gating means a buffer with no active clear emits no divider; we still
+  // run the loop normally.
+  const clearedBeforeId = buf?.detached ? 0 : buf?.clearedBeforeId || 0;
+  const clearedAt = buf?.detached ? null : buf?.clearedAt || null;
+  let clearedInserted = !clearedAt;
+  const pushClearedDivider = () => {
+    if (!clearedAt) return;
+    out.push({ divider: 'cleared', clearedAt, key: 'cleared-divider' });
+  };
+
   // Self-presence anchors. The away divider lands before the first message
   // newer than the user's last /away time; the back divider lands before the
   // first message newer than the matching /back. Anchoring by message time
@@ -498,6 +533,10 @@ const renderRows = computed((): RenderRow[] => {
     const key = m.id ?? `live:${i}`;
     let hidden = false;
 
+    // /clear filter (hard hide). Comes first so the divider, when emitted
+    // below, lands above every other filter's surviving rows.
+    if (clearedBeforeId > 0 && m.id != null && Number(m.id) <= clearedBeforeId) continue;
+
     // Render-time ignore filter. Self-authored events are never hidden (the
     // user always sees their own activity), and the matcher is fed both the
     // bare nick and the full nick!user@host so hostmask entries can fire.
@@ -528,6 +567,13 @@ const renderRows = computed((): RenderRow[] => {
     }
 
     if (hidden) continue;
+
+    // Cleared divider sits at the very top of the visible region — above the
+    // day-change marker so the user sees "cleared at …" before any date.
+    if (!clearedInserted) {
+      pushClearedDivider();
+      clearedInserted = true;
+    }
 
     // Day-change marker before the first visible row of each local day.
     const dayKey = formatDate(m.time ?? '');
@@ -560,6 +606,9 @@ const renderRows = computed((): RenderRow[] => {
   // message and nothing has arrived yet).
   if (!awayInserted) pushAwayDivider();
   if (!backInserted) pushBackDivider();
+  // Every loaded row got filtered by /clear (or the buffer is empty) — drop
+  // the divider at the end so the user still sees an undo affordance.
+  if (!clearedInserted) pushClearedDivider();
 
   // Final pass: merge consecutive join/part/quit/nick rows into a single
   // summary row when consolidation is enabled. Dividers break runs (we want
@@ -1375,7 +1424,8 @@ watch(
    but in the muted fg color since they're informational rather than
    action-required. */
 .presence-divider,
-.date-divider {
+.date-divider,
+.cleared-divider {
   font-style: normal;
   font-size: 0.85em;
   letter-spacing: 0.08em;
@@ -1388,10 +1438,29 @@ watch(
 .presence-divider::before,
 .presence-divider::after,
 .date-divider::before,
-.date-divider::after {
+.date-divider::after,
+.cleared-divider::before,
+.cleared-divider::after {
   content: '';
   flex: 1;
   border-top: 1px dashed var(--fg-muted);
   opacity: 0.6;
+}
+
+/* Undo affordance on the /clear divider — text-only button styled inline
+   with the label so the whole line reads as one structural anchor. */
+.cleared-undo {
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+.cleared-undo:hover {
+  color: var(--accent);
 }
 </style>

@@ -513,6 +513,16 @@ ensureColumn('messages', 'alt', 'INTEGER NOT NULL DEFAULT 0');
 // they remain visible/countable, matching pre-fix behavior.
 ensureColumn('messages', 'from_ignored', 'INTEGER NOT NULL DEFAULT 0');
 
+// Per-(user, buffer) /clear marker. cleared_before_message_id is the highest
+// message id hidden from the live view; messages with id > it remain visible.
+// cleared_at is the wall-clock time the user issued /clear (shown in the
+// divider). Both NULL means the buffer has never been cleared (or the user
+// undid the clear). Stored on buffer_reads so the per-buffer state stays in
+// one row — close-buffer doesn't touch buffer_reads, so the clear survives
+// reopen.
+ensureColumn('buffer_reads', 'cleared_before_message_id', 'INTEGER');
+ensureColumn('buffer_reads', 'cleared_at', 'TEXT');
+
 // Schema versioning lets us retire one-shot recovery blocks once every
 // production DB has run through them. Bump SCHEMA_VERSION when adding a new
 // recovery block, and delete blocks for versions far enough in the past.

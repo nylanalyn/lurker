@@ -10,6 +10,13 @@ export interface BufferRead {
   target: string;
   last_read_message_id: number;
   updated_at: string;
+  cleared_before_message_id: number | null;
+  cleared_at: string | null;
+}
+
+export interface ClearedState {
+  clearedBeforeId: number;
+  clearedAt: string | null;
 }
 
 const upsertStmt = db.prepare(`
@@ -63,4 +70,87 @@ export function setReadState(
   if (!Number.isFinite(id) || id <= 0) return getReadState(userId, networkId, target);
   upsertStmt.run(userId, networkId, target, id);
   return getReadState(userId, networkId, target);
+}
+
+// --- /clear marker state ---------------------------------------------------
+//
+// The clear marker lives on the same buffer_reads row as the read pointer
+// (one row per user/buffer is enough), but it's controlled separately:
+// /clear writes only the cleared_* columns and never touches the read
+// pointer — hiding a message doesn't mark it read.
+
+const upsertClearedStmt = db.prepare(`
+  INSERT INTO buffer_reads
+    (user_id, network_id, target, last_read_message_id,
+     cleared_before_message_id, cleared_at, updated_at)
+  VALUES (?, ?, ?, 0, ?, ?, datetime('now'))
+  ON CONFLICT(user_id, network_id, target) DO UPDATE SET
+    cleared_before_message_id = excluded.cleared_before_message_id,
+    cleared_at = excluded.cleared_at,
+    updated_at = excluded.updated_at
+`);
+
+const getClearedStmt = db.prepare(`
+  SELECT
+    cleared_before_message_id AS clearedBeforeId,
+    cleared_at AS clearedAt
+  FROM buffer_reads
+  WHERE user_id = ? AND network_id = ? AND target = ?
+`);
+
+const listClearedStmt = db.prepare(`
+  SELECT network_id AS networkId, target,
+         cleared_before_message_id AS clearedBeforeId,
+         cleared_at AS clearedAt
+  FROM buffer_reads
+  WHERE user_id = ?
+    AND cleared_before_message_id IS NOT NULL
+    AND cleared_before_message_id > 0
+`);
+
+export function getClearedState(userId: number, networkId: number, target: string): ClearedState {
+  const row = getClearedStmt.get(userId, networkId, target) as
+    | { clearedBeforeId: number | null; clearedAt: string | null }
+    | undefined;
+  if (!row || !row.clearedBeforeId) return { clearedBeforeId: 0, clearedAt: null };
+  return { clearedBeforeId: row.clearedBeforeId, clearedAt: row.clearedAt };
+}
+
+// boundaryId === 0 (or null) clears the marker — equivalent to "Show earlier
+// messages" / `/clear off`. Otherwise the boundary id is the largest id the
+// user wants hidden; clearedAt is shown in the divider above the first
+// surviving row.
+export function setClearedState(
+  userId: number,
+  networkId: number,
+  target: string,
+  boundaryId: number,
+  clearedAt: string | null,
+): ClearedState {
+  const id = Number(boundaryId);
+  if (!Number.isFinite(id) || id <= 0) {
+    upsertClearedStmt.run(userId, networkId, target, null, null);
+    return { clearedBeforeId: 0, clearedAt: null };
+  }
+  upsertClearedStmt.run(userId, networkId, target, id, clearedAt);
+  return getClearedState(userId, networkId, target);
+}
+
+// Map keyed by `${networkId}::${target}` for buffers with an active clear
+// marker. Sparse — buffers that have never been cleared aren't returned, so
+// callers default to the no-clear state for missing keys.
+export function listClearedStateForUser(userId: number): Record<string, ClearedState> {
+  const out: Record<string, ClearedState> = {};
+  for (const row of listClearedStmt.all(userId) as Array<{
+    networkId: number;
+    target: string;
+    clearedBeforeId: number;
+    clearedAt: string | null;
+  }>) {
+    out[`${row.networkId}::${row.target}`] = {
+      clearedBeforeId: row.clearedBeforeId,
+      clearedAt: row.clearedAt,
+    };
+  }
+  return out;
 }
