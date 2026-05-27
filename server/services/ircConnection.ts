@@ -3,7 +3,12 @@
 
 import IRC, { ircLineParser } from 'irc-framework';
 import type { Client as IrcClient } from 'irc-framework';
-import { insertMessage, hasMessageForTarget, listBufferTargets } from '../db/messages.js';
+import {
+  insertMessage,
+  hasMessageForTarget,
+  listBufferTargets,
+  COUNTABLE_TYPES,
+} from '../db/messages.js';
 import type { Network } from '../db/networks.js';
 import { upsertChannel } from '../db/networks.js';
 import { isClosed as isBufferClosed } from '../db/closedBuffers.js';
@@ -17,6 +22,8 @@ import {
 } from '../db/peerPresence.js';
 import highlightRulesService from './highlightRulesService.js';
 import { matchEvent } from './highlightEngine.js';
+import { matchesAny as matchesIgnoreMask } from './maskMatch.js';
+import { listMasks as listIgnoredMasks } from '../db/ignoredMasks.js';
 import * as systemLog from './systemLog.js';
 import { IRC_VERSION, APP_VERSION } from '../utils/userAgent.js';
 
@@ -263,6 +270,30 @@ export class IrcConnection {
       } catch (e) {
         console.warn('[highlight] match-on-insert failed:', (e as Error)?.message || e);
       }
+      // Stamp from_ignored at insert time so unread/highlight counts can
+      // exclude ignored senders without a per-query mask scan. Only the
+      // countable chat types ever read this column — gating to COUNTABLE_TYPES
+      // skips the DB lookup on high-churn JOIN/PART/QUIT/NICK/KICK/etc.
+      // Self messages can't be ignored; nick-less system rows have no sender.
+      let fromIgnored = false;
+      const nick = event.nick as string | null | undefined;
+      if (COUNTABLE_TYPES.has(event.type) && nick && !event.self) {
+        try {
+          const masks = listIgnoredMasks({
+            userId: this.network.user_id,
+            networkId: this.network.id,
+          });
+          if (masks.length) {
+            fromIgnored = matchesIgnoreMask(
+              masks,
+              nick,
+              (event.userhost as string | null | undefined) ?? null,
+            );
+          }
+        } catch (e) {
+          console.warn('[ignore] match-on-insert failed:', (e as Error)?.message || e);
+        }
+      }
       const { id, alt } = insertMessage({
         networkId: this.network.id,
         target: event.target as string,
@@ -275,6 +306,7 @@ export class IrcConnection {
         extra: extractExtras(event),
         matchedRuleId,
         userhost: (event.userhost as string | null | undefined) ?? null,
+        fromIgnored,
       });
       enriched.id = id;
       enriched.alt = alt;
