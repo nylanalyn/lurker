@@ -254,6 +254,8 @@ function applyBacklog(payload: any): void {
       unread: payload.unread,
       highlights: payload.highlights,
       highlightsCapped: payload.highlightsCapped,
+      clearedBeforeId: payload.clearedBeforeId,
+      clearedAt: payload.clearedAt,
     },
     payload.joined,
   );
@@ -339,6 +341,14 @@ function handleMessage(raw: string): void {
       unread: payload.unread,
       highlights: payload.highlights,
       highlightsCapped: payload.highlightsCapped,
+    });
+    return;
+  }
+  if (payload.kind === 'buffer-cleared') {
+    const buffers = useBuffersStore();
+    buffers.applyClearedState(payload.networkId, payload.target, {
+      clearedBeforeId: payload.clearedBeforeId,
+      clearedAt: payload.clearedAt,
     });
     return;
   }

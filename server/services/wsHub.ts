@@ -30,9 +30,17 @@ import {
   countNewer,
   countHighlightsNewer,
   maxIdByBuffer,
+  maxIdForBuffer,
   COUNTABLE_TYPES,
 } from '../db/messages.js';
-import { listReadStateForUser, getReadState, setReadState } from '../db/bufferReads.js';
+import {
+  listReadStateForUser,
+  getReadState,
+  setReadState,
+  listClearedStateForUser,
+  getClearedState,
+  setClearedState,
+} from '../db/bufferReads.js';
 import {
   addEntry as addInputHistory,
   listRecent as listRecentInputHistory,
@@ -238,6 +246,7 @@ export function buildBufferBacklog(userId: number, networkId: number, target: st
   );
   const lastReadId = getReadState(userId, networkId, target);
   const counts = computeUnreadFor(userId, networkId, target, lastReadId);
+  const cleared = getClearedState(userId, networkId, target);
   return {
     kind: 'backlog',
     networkId,
@@ -252,6 +261,8 @@ export function buildBufferBacklog(userId: number, networkId: number, target: st
     unread: counts.unread,
     highlights: counts.highlights,
     highlightsCapped: counts.highlightsCapped,
+    clearedBeforeId: cleared.clearedBeforeId,
+    clearedAt: cleared.clearedAt,
     inputHistory: listRecentInputHistory(userId, networkId, target, 200),
   };
 }
@@ -708,6 +719,7 @@ export function attachWsHub(httpServer: HttpServer, sessionSecret: string) {
     // return resync is harmless.
     send(ws, { kind: 'system-log-snapshot', lines: systemLog.getRecent(userId) });
     const readState = listReadStateForUser(userId);
+    const clearedState = listClearedStateForUser(userId);
     const closed = closedKeySetForUser(userId);
     let maxSentId = ws.sinceId || 0;
     for (const conn of ircManager.listConnections(userId)) {
@@ -749,6 +761,10 @@ export function attachWsHub(httpServer: HttpServer, sessionSecret: string) {
         const speakers = listSpeakers(conn.network.id, target);
         const lastReadId = readState[`${conn.network.id}::${target}`] || 0;
         const counts = computeUnreadFor(userId, conn.network.id, target, lastReadId);
+        const cleared = clearedState[`${conn.network.id}::${target}`] ?? {
+          clearedBeforeId: 0,
+          clearedAt: null,
+        };
         // Per-buffer input history is unbounded on disk; ship a recent slice
         // for up-arrow recall. Older entries stay in the DB and could be
         // paginated in later if the slice ever proves too small.
@@ -767,6 +783,8 @@ export function attachWsHub(httpServer: HttpServer, sessionSecret: string) {
           unread: counts.unread,
           highlights: counts.highlights,
           highlightsCapped: counts.highlightsCapped,
+          clearedBeforeId: cleared.clearedBeforeId,
+          clearedAt: cleared.clearedAt,
           inputHistory,
         });
       }
@@ -1004,6 +1022,43 @@ export function attachWsHub(httpServer: HttpServer, sessionSecret: string) {
         if (!networkId || !target || !Number.isFinite(requested) || requested <= 0) break;
         const lastReadId = setReadState(userId, networkId, target, requested);
         broadcastReadState(userId, networkId, target, lastReadId);
+        break;
+      }
+      case 'clear-buffer': {
+        // /clear: anchor the marker at the current tail. Server-computed so
+        // a message persisted between client send and server receive gets
+        // hidden too — the user's intent is "everything visible right now."
+        const networkId = Number(msg.networkId);
+        const target = typeof msg.target === 'string' ? msg.target : '';
+        if (!networkId || !target) break;
+        const boundary = maxIdForBuffer(networkId, target);
+        // Empty buffer: nothing to clear; don't write a no-op row.
+        if (boundary <= 0) break;
+        const next = setClearedState(userId, networkId, target, boundary, new Date().toISOString());
+        fanOut(userId, {
+          kind: 'buffer-cleared',
+          networkId,
+          target,
+          clearedBeforeId: next.clearedBeforeId,
+          clearedAt: next.clearedAt,
+        });
+        break;
+      }
+      case 'unclear-buffer': {
+        // Drop the clear marker so previously-hidden messages reappear.
+        // Fired by the "Show earlier messages" affordance on the divider
+        // and by `/clear off`.
+        const networkId = Number(msg.networkId);
+        const target = typeof msg.target === 'string' ? msg.target : '';
+        if (!networkId || !target) break;
+        setClearedState(userId, networkId, target, 0, null);
+        fanOut(userId, {
+          kind: 'buffer-cleared',
+          networkId,
+          target,
+          clearedBeforeId: 0,
+          clearedAt: null,
+        });
         break;
       }
       case 'mark-all-read': {

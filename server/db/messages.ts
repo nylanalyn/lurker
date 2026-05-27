@@ -276,6 +276,15 @@ export function maxIdByBuffer(networkId: number): MaxIdByBufferRow[] {
     .all(networkId) as MaxIdByBufferRow[];
 }
 
+// MAX(id) for a single buffer, or 0 when the buffer has no rows. Used by
+// /clear to anchor the marker at the current tail.
+export function maxIdForBuffer(networkId: number, target: string): number {
+  const row = db
+    .prepare('SELECT MAX(id) AS maxId FROM messages WHERE network_id = ? AND target = ?')
+    .get(networkId, target) as { maxId: number | null } | undefined;
+  return row?.maxId || 0;
+}
+
 // Cheap "does the user have any history with this target?" check used by the
 // no_such_nick router: only route a DM-shaped error into a per-nick buffer if
 // the user has actually conversed with that nick. Stops typo /whois replies

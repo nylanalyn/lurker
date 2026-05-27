@@ -1346,6 +1346,7 @@ const HELP_LINES = [
   '  /join <#chan>          — join a channel',
   '  /part [#chan] [reason] — leave channel (keeps buffer; alias: /leave)',
   '  /close                 — close current buffer (parts if channel)',
+  '  /clear [off]           — hide buffer up to now (off = undo, show again)',
   '  /away [message]        — set away across every network (no arg clears)',
   '  /back                  — clear away',
   '  /whois <nick>          — query user info (renders in server buffer)',
@@ -1449,6 +1450,17 @@ function handleCommand(line: string, networkId: number, target: string): boolean
       // Close the current buffer. For channels this also PARTs; for DMs it
       // just hides the buffer. Server pseudo-buffers can't be closed.
       return sendOrToast({ type: 'close-buffer', networkId, target }, line);
+    case 'clear': {
+      // /clear            — hide everything currently in the buffer up to now;
+      //                     a "cleared at …" divider and an undo affordance
+      //                     replace the hidden region.
+      // /clear off|undo   — drop the marker so hidden messages reappear.
+      const arg = argLine.trim().toLowerCase();
+      if (arg === 'off' || arg === 'undo') {
+        return sendOrToast({ type: 'unclear-buffer', networkId, target }, line);
+      }
+      return sendOrToast({ type: 'clear-buffer', networkId, target }, line);
+    }
     case 'raw':
     case 'quote':
       return sendOrToast({ type: 'raw', networkId, line: argLine }, line);

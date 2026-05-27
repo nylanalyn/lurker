@@ -27,10 +27,13 @@ export interface JumpToMessageOptions {
 //   1. Reject :server: pseudo-buffers (no per-message anchor).
 //   2. Reject closed buffers with the existing toast.
 //   3. Activate the buffer.
-//   4. If the target id is already in buf.messages, set pendingScrollId
-//      directly (current happy path; no fetch needed).
+//   4. If the target id is already in buf.messages AND not hidden by the
+//      /clear marker, set pendingScrollId directly (current happy path; no
+//      fetch needed).
 //   5. Otherwise, loadAround() — detaching the buffer to a bounded ~200-row
 //      historical slice — and arm pendingScrollId once the slice lands.
+//      Detached mode suppresses the /clear filter in MessageList, so a row
+//      below the marker becomes visible without disturbing the marker.
 export function useJumpToMessage({ pendingScrollId, afterActivate }: JumpToMessageOptions = {}): (
   args: JumpTarget,
 ) => void {
@@ -54,7 +57,16 @@ export function useJumpToMessage({ pendingScrollId, afterActivate }: JumpToMessa
 
     const buf = buffers.byKey(`${networkId}::${target}`) as any;
     const hasMessage = buf?.messages?.some((m: any) => m.id === messageId);
+    // A row at or below the /clear marker is loaded but filtered out at
+    // render time. Detaching the buffer suppresses the filter — no fetch
+    // needed since the row is already in memory — and the next render pass
+    // mounts the DOM node pendingScrollId is waiting to scroll to.
+    const hiddenByClear =
+      typeof buf?.clearedBeforeId === 'number' &&
+      buf.clearedBeforeId > 0 &&
+      messageId <= buf.clearedBeforeId;
     if (hasMessage) {
+      if (hiddenByClear) buffers.detachForJump(networkId, target);
       if (pendingScrollId) pendingScrollId.value = messageId;
       return;
     }

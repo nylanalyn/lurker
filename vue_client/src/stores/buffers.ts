@@ -81,6 +81,13 @@ export interface Buffer {
   highlightsCapped: boolean;
   lastReadId: number;
   dividerAfterId: number | null;
+  // /clear marker. Render-time filter hides messages with id <= clearedBeforeId
+  // (0 = no clear). clearedAt is the wall-clock time the user issued /clear,
+  // shown in the "cleared at …" divider; null when no clear is in effect.
+  // Filter only applies in live tail — detached/jump views ignore it so
+  // search/highlight navigation always lands on the target row.
+  clearedBeforeId: number;
+  clearedAt: string | null;
   typing: Record<string, TypingEntry>;
   oldestId: number | null;
   newestId: number | null;
@@ -123,6 +130,10 @@ function ensureBuffer(
       // with this id; it stays pinned until switch-away (matching WeeChat),
       // not advanced live as new messages arrive in the focused buffer.
       dividerAfterId: null,
+      // /clear marker — server-owned, mirrored here for render-time filtering.
+      // 0 / null mean no clear active.
+      clearedBeforeId: 0,
+      clearedAt: null,
       typing: {},
       oldestId: null,
       // Symmetric to oldestId. Only authoritative while detached or mid-page-
@@ -338,6 +349,19 @@ export const useBuffersStore = defineStore('buffers', {
       buf.hasMoreNewer = !!hasMoreNewer;
       buf.loadingHistory = false;
       if (speakers !== undefined) this.seedSpeakers(networkId, target, speakers);
+    },
+    // Flip the buffer into detached mode without fetching a slice. Used by
+    // jump-to-message when the target row is already loaded but filtered out
+    // at render time (today: hidden by the /clear marker). The MessageList
+    // filter is suppressed while detached, so the row becomes visible and
+    // pendingScrollId can scroll to it on the next tick — no around-fetch
+    // needed, and the "Return to present" affordance shows up the same way
+    // it does after a real jump.
+    detachForJump(networkId: number | string, target: string) {
+      const buf = ensureBuffer(this, networkId, target);
+      if (buf.detached) return;
+      buf.detached = true;
+      buf.liveDuringDetach = 0;
     },
     // Jump-to-message entry point. Synchronously flips the buffer into
     // detached mode before the WS send so that any live fanOut arriving
@@ -587,6 +611,36 @@ export const useBuffersStore = defineStore('buffers', {
       // deactivate; the count refreshes live, the divider stays pinned.
       if (buf.dividerAfterId == null) buf.lastReadId = lastReadId;
       else buf.lastReadId = Math.max(buf.lastReadId, lastReadId);
+      // The /clear marker rides in the same payload on backlog frames so the
+      // filter survives reconnects. Only honor it when both keys are present —
+      // a plain read-state broadcast (no clear fields) shouldn't stomp the
+      // current marker.
+      if (
+        Object.prototype.hasOwnProperty.call(payload ?? {}, 'clearedBeforeId') ||
+        Object.prototype.hasOwnProperty.call(payload ?? {}, 'clearedAt')
+      ) {
+        buf.clearedBeforeId = Number(payload?.clearedBeforeId) || 0;
+        buf.clearedAt = payload?.clearedAt || null;
+      }
+    },
+    // Dedicated dispatch for the `buffer-cleared` fan-out (both set-clear and
+    // unset-clear). Distinct from applyReadState so a buffer-cleared frame
+    // that doesn't carry read-state fields doesn't blank them out.
+    applyClearedState(networkId: number | string, target: string, payload: any) {
+      const buf = ensureBuffer(this, networkId, target);
+      buf.clearedBeforeId = Number(payload?.clearedBeforeId) || 0;
+      buf.clearedAt = payload?.clearedAt || null;
+    },
+    // /clear: anchor the marker at the current tail (server picks the exact
+    // boundary id). Best-effort send; the server's fan-out echoes back and
+    // applyClearedState moves the local mirror to the authoritative value.
+    clearBuffer(networkId: number | string, target: string) {
+      socketSend({ type: 'clear-buffer', networkId, target });
+    },
+    // Drop the /clear marker so hidden messages reappear. Fired by the
+    // "Show earlier messages" affordance on the divider and by `/clear off`.
+    unclearBuffer(networkId: number | string, target: string) {
+      socketSend({ type: 'unclear-buffer', networkId, target });
     },
     // Switch to a buffer. We mark the entered buffer read on focus-IN (not
     // on focus-OUT of the previous one) so that a tab close / reload / lost
