@@ -119,7 +119,10 @@ watch(
   gap: 0.5ch;
   background: none;
   border: none;
-  padding: 2px 6px;
+  /* Horizontal padding only — vertical padding would make the chip taller
+     than the nick strip's chips, and `align-items: center` on the strip
+     would then push the emoji glyph above the StatusBar's text baseline. */
+  padding: 0 6px;
   font: inherit;
   color: var(--fg);
   cursor: pointer;
