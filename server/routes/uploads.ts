@@ -9,9 +9,16 @@ import { getUserSettings } from '../db/settings.js';
 import { defaultsAsObject } from '../services/settingsRegistry.js';
 import * as imagePipeline from '../services/imagePipeline.js';
 import { getProvider, providerIds, secretsForProvider } from '../services/uploadProviders/index.js';
+import {
+  NODE_UPLOAD_PROVIDER_ID,
+  nodeUploadSecrets,
+  nodeUploadLimits,
+  nodeUploadConfigured,
+} from '../services/uploadProviders/nodeUpload.js';
 import type { UploadListRow } from '../db/uploadHistory.js';
 import { insertUpload, listUploads, getThumbnail, deleteUpload } from '../db/uploadHistory.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { isNodeMode } from '../utils/edition.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -43,14 +50,33 @@ router.post(
         return;
       }
 
+      // In node edition the operator must have configured the in-house uploader.
+      // Without it the forced provider would throw an error naming per-user
+      // settings a tenant can't see — fail fast with a clear, server-side signal
+      // instead. The boot warning already tells the operator what to set.
+      if (isNodeMode() && !nodeUploadConfigured()) {
+        res.status(503).json({ error: 'uploads are not configured on this server' });
+        return;
+      }
+
       const settings = effectiveSettings(req.user!.id);
-      const maxMb = Number(settings['uploads.image.max_upload_mb']) || 25;
+      // The image-pipeline limits (size cap, max dimension, JPEG quality) are
+      // operator-controlled in node edition — sourced from env, not the tenant's
+      // settings, so a tenant can't lift their own cap or inflate storage. A3
+      // hides the matching UI. Standalone keeps these as per-user settings.
+      const limits = isNodeMode() ? nodeUploadLimits() : null;
+      const maxMb = limits ? limits.maxMb : Number(settings['uploads.image.max_upload_mb']) || 25;
       if (req.file.size > maxMb * 1024 * 1024) {
         res.status(413).json({ error: `file exceeds ${maxMb} MB` });
         return;
       }
 
-      const providerId = String(settings['uploads.provider'] ?? '');
+      // In node edition the operator forces the in-house uploader and supplies
+      // its credentials from the environment — a tenant never picks a host or
+      // sees the keys. Standalone honors the user's chosen provider as before.
+      const providerId = isNodeMode()
+        ? NODE_UPLOAD_PROVIDER_ID
+        : String(settings['uploads.provider'] ?? '');
       const provider = getProvider(providerId);
       if (!provider) {
         res.status(400).json({ error: `unknown provider: ${providerId}` });
@@ -81,8 +107,10 @@ router.post(
         let optimized: any;
         try {
           optimized = await imagePipeline.optimize(req.file.buffer, {
-            maxDim: Number(settings['uploads.image.max_dimension']) || 2048,
-            quality: Number(settings['uploads.image.quality']) || 85,
+            maxDim: limits
+              ? limits.maxDim
+              : Number(settings['uploads.image.max_dimension']) || 2048,
+            quality: limits ? limits.quality : Number(settings['uploads.image.quality']) || 85,
           });
         } catch (err) {
           const e = err as { code?: string; message?: string };
@@ -105,7 +133,9 @@ router.post(
       const baseName = originalName.replace(/\.[^.]+$/, '') || `upload-${Date.now()}`;
       const filename = `${baseName}.${outExt}`;
 
-      const secrets = secretsForProvider(providerId, settings as Record<string, string>);
+      const secrets: Record<string, string> = isNodeMode()
+        ? nodeUploadSecrets()
+        : secretsForProvider(providerId, settings as Record<string, string>);
       // provider.upload is from an untyped JS module
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let result: any;
