@@ -15,6 +15,10 @@ import {
   findUserByUsername,
 } from '../db/users.js';
 import ircManager from '../services/ircManager.js';
+import { sign as signCookie } from 'cookie-signature';
+import { createSession } from '../db/sessions.js';
+import { resolveSessionSecret } from '../utils/sessionSecret.js';
+import { SESSION_COOKIE } from '../middleware/auth.js';
 
 // Orchestrator-driven control surface for a cell. Mounted only in node edition
 // (see server.ts behind isNodeMode()), and every route requires the node secret
@@ -83,6 +87,35 @@ router.delete('/users/:id', (req: Request, res: Response) => {
   ircManager.disposeUser(id, 'deprovisioned');
   deleteUser(id);
   res.json({ ok: true });
+});
+
+// Mint a real cell session for a provisioned tenant and return the signed
+// `lurker_session` cookie value. The reverse proxy sets this on the customer's
+// browser, so the cell authenticates them through its OWN existing session
+// logic — HTTP (requireAuth) and the WS upgrade alike — with no new trust path.
+// Fleet-authenticated; never reachable by a tenant.
+const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+router.post('/users/:id/session', (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: 'invalid id' });
+    return;
+  }
+  const target = findUserById(id);
+  if (!target) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
+  // The operator's admin account is not a tenant — never mint a session for it
+  // through the node API (D1 × node-mode invariant).
+  if (target.role === 'admin') {
+    res.status(409).json({ error: 'refusing to mint a session for an admin account' });
+    return;
+  }
+  const { secret } = resolveSessionSecret();
+  const { token } = createSession(id);
+  const value = 's:' + signCookie(token, secret);
+  res.json({ cookieName: SESSION_COOKIE, value, maxAgeMs: SESSION_MAX_AGE_MS });
 });
 
 export default router;
