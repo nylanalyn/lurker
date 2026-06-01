@@ -9,9 +9,14 @@ import { getUserSettings } from '../db/settings.js';
 import { defaultsAsObject } from '../services/settingsRegistry.js';
 import * as imagePipeline from '../services/imagePipeline.js';
 import { getProvider, providerIds, secretsForProvider } from '../services/uploadProviders/index.js';
+import {
+  NODE_UPLOAD_PROVIDER_ID,
+  nodeUploadSecrets,
+} from '../services/uploadProviders/nodeUpload.js';
 import type { UploadListRow } from '../db/uploadHistory.js';
 import { insertUpload, listUploads, getThumbnail, deleteUpload } from '../db/uploadHistory.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { isNodeMode } from '../utils/edition.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -50,7 +55,12 @@ router.post(
         return;
       }
 
-      const providerId = String(settings['uploads.provider'] ?? '');
+      // In node edition the operator forces the in-house uploader and supplies
+      // its credentials from the environment — a tenant never picks a host or
+      // sees the keys. Standalone honors the user's chosen provider as before.
+      const providerId = isNodeMode()
+        ? NODE_UPLOAD_PROVIDER_ID
+        : String(settings['uploads.provider'] ?? '');
       const provider = getProvider(providerId);
       if (!provider) {
         res.status(400).json({ error: `unknown provider: ${providerId}` });
@@ -105,7 +115,9 @@ router.post(
       const baseName = originalName.replace(/\.[^.]+$/, '') || `upload-${Date.now()}`;
       const filename = `${baseName}.${outExt}`;
 
-      const secrets = secretsForProvider(providerId, settings as Record<string, string>);
+      const secrets: Record<string, string> = isNodeMode()
+        ? nodeUploadSecrets()
+        : secretsForProvider(providerId, settings as Record<string, string>);
       // provider.upload is from an untyped JS module
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let result: any;

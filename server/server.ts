@@ -3,32 +3,13 @@
 
 import 'dotenv/config';
 import http from 'http';
-import express from 'express';
-import type { ErrorRequestHandler } from 'express';
-import cookieParser from 'cookie-parser';
-import cors from 'cors';
-import path from 'path';
 
-import authRouter from './routes/auth.js';
-import networksRouter from './routes/networks.js';
-import settingsRouter from './routes/settings.js';
-import highlightRulesRouter from './routes/highlightRules.js';
-import highlightsRouter from './routes/highlights.js';
-import bookmarksRouter from './routes/bookmarks.js';
-import pushRouter from './routes/push.js';
-import adminRouter from './routes/admin.js';
-import uploadsRouter from './routes/uploads.js';
-import draftsRouter from './routes/drafts.js';
-import { exportsRouter, importRouter } from './routes/exports.js';
-import apiTokensRouter from './routes/apiTokens.js';
-import configRouter from './routes/config.js';
-import nodeRouter from './routes/node.js';
+import { buildApp } from './app.js';
 import ircManager from './services/ircManager.js';
 import { attachWsHub } from './services/wsHub.js';
 import './services/verbs/index.js';
-import mcpRouter from './services/mcpServer.js';
-import { requireApiAuth } from './middleware/apiAuth.js';
 import { getNodeSecret } from './middleware/nodeAuth.js';
+import { nodeUploadConfigured } from './services/uploadProviders/nodeUpload.js';
 import * as systemLog from './services/systemLog.js';
 import { purgeExpiredSessions } from './db/sessions.js';
 import { resolveSessionSecret } from './utils/sessionSecret.js';
@@ -47,56 +28,13 @@ if (isNodeMode() && !getNodeSecret()) {
     '[lurker] node edition is active but LURKER_NODE_SECRET is unset — the node control API will reject every request (503) until it is configured',
   );
 }
-
-const app = express();
-
-const corsOrigin = process.env.CORS_ORIGIN || 'https://irc.local.bradroot.me:5173';
-app.use(cors({ origin: corsOrigin, credentials: true }));
-app.use(express.json({ limit: '1mb' }));
-app.use(cookieParser(SESSION_SECRET));
-
-app.use('/api/auth', authRouter);
-app.use('/api/networks', networksRouter);
-app.use('/api/settings', settingsRouter);
-app.use('/api/highlight-rules', highlightRulesRouter);
-app.use('/api/highlights', highlightsRouter);
-app.use('/api/bookmarks', bookmarksRouter);
-app.use('/api/push', pushRouter);
-app.use('/api/admin', adminRouter);
-app.use('/api/uploads', uploadsRouter);
-app.use('/api/drafts', draftsRouter);
-app.use('/api/exports', exportsRouter);
-app.use('/api/imports', importRouter);
-app.use('/api/api-tokens', apiTokensRouter);
-app.use('/api/config', configRouter);
-
-// Orchestrator-only control surface. Mounted exclusively in node edition so a
-// standalone self-hosted instance never exposes it at all.
-if (isNodeMode()) {
-  app.use('/api/node', nodeRouter);
+if (isNodeMode() && !nodeUploadConfigured()) {
+  console.warn(
+    '[lurker] node edition is active but LURKER_NODE_UPLOAD_URL / LURKER_NODE_UPLOAD_API_KEY are unset — image and text uploads will fail (400) until they are configured',
+  );
 }
 
-app.use('/mcp', requireApiAuth, mcpRouter);
-
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', time: new Date().toISOString() });
-});
-
-const clientDist = path.join(import.meta.dirname, '../vue_client/dist');
-app.use(express.static(clientDist));
-app.get(/^\/(?!api|ws).*/, (_req, res, next) => {
-  res.sendFile(path.join(clientDist, 'index.html'), (err) => {
-    if (err) next();
-  });
-});
-
-const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
-  console.error('[lurker] error:', err);
-  if (res.headersSent) return next(err);
-  res.status(500).json({ error: 'internal error' });
-};
-app.use(errorHandler);
-
+const app = buildApp(SESSION_SECRET);
 const server = http.createServer(app);
 attachWsHub(server, SESSION_SECRET);
 
