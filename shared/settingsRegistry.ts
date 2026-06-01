@@ -27,6 +27,11 @@ interface BaseOption {
   category: string;
   group: string;
   description: string;
+  // Operator-only: hidden from the Settings UI in the hosted (node) edition,
+  // where the cell — not the tenant — owns this knob. The server ignores the
+  // flag; it is purely a client-side rendering gate (A3). Self-hosted
+  // (standalone) instances show everything as before.
+  selfHostedOnly?: boolean;
 }
 
 /** Free-text settings: plain strings, CSS colors, and write-only secrets. */
@@ -74,6 +79,8 @@ export interface SettingCategory {
   label: string;
   kind: 'registry' | 'bespoke';
   adminOnly?: boolean;
+  // As on BaseOption: hide the whole category in the hosted (node) edition.
+  selfHostedOnly?: boolean;
 }
 
 export const REGISTRY: readonly SettingOption[] = Object.freeze([
@@ -811,6 +818,10 @@ export const REGISTRY: readonly SettingOption[] = Object.freeze([
     type: 'enum',
     choices: ['x0', 'catbox', 'hoarder'],
     default: 'x0',
+    // Node edition forces the operator's in-house uploader (A8); a tenant never
+    // picks a host, so this and the provider-credential settings below are
+    // hidden in the hosted edition.
+    selfHostedOnly: true,
     description:
       'Where pasted/picked images are uploaded. x0.at and catbox.moe are ' +
       'anonymous public hosts. hoarder uploads to your own self-hosted ' +
@@ -825,6 +836,9 @@ export const REGISTRY: readonly SettingOption[] = Object.freeze([
     min: 256,
     max: 8192,
     default: 2048,
+    // Cost/abuse lever — operator-controlled in node edition (enforced
+    // server-side in A8), not a tenant knob.
+    selfHostedOnly: true,
     description:
       'Longest-edge limit for static images before they are re-encoded as JPEG. ' +
       'Animated GIF/WebP/APNG bypass this and are uploaded verbatim.',
@@ -838,6 +852,7 @@ export const REGISTRY: readonly SettingOption[] = Object.freeze([
     min: 30,
     max: 100,
     default: 85,
+    selfHostedOnly: true,
     description: 'JPEG quality for the re-encode pass on static images (30–100).',
   },
   {
@@ -849,6 +864,7 @@ export const REGISTRY: readonly SettingOption[] = Object.freeze([
     min: 1,
     max: 200,
     default: 25,
+    selfHostedOnly: true,
     description:
       'Hard cap on the raw upload size in megabytes. Anything larger is ' +
       'rejected before the optimization pipeline runs.',
@@ -871,6 +887,7 @@ export const REGISTRY: readonly SettingOption[] = Object.freeze([
     group: 'catbox',
     type: 'secret',
     default: '',
+    selfHostedOnly: true,
     description:
       'Optional catbox.moe account hash. Uploads made with a userhash can ' +
       'be managed from your catbox account; without one they are anonymous.',
@@ -882,6 +899,7 @@ export const REGISTRY: readonly SettingOption[] = Object.freeze([
     group: 'hoarder',
     type: 'string',
     default: '',
+    selfHostedOnly: true,
     description:
       'Base URL of your Hoarder instance (e.g. https://upload.example.com). ' +
       'Only used when the upload provider is set to hoarder.',
@@ -893,6 +911,7 @@ export const REGISTRY: readonly SettingOption[] = Object.freeze([
     group: 'hoarder',
     type: 'secret',
     default: '',
+    selfHostedOnly: true,
     description:
       'API key for your Hoarder instance. Generate one on the Hoarder server ' +
       'with `node scripts/gen-api-key.js` and add it to ' +
@@ -1230,7 +1249,10 @@ export const CATEGORIES: readonly SettingCategory[] = Object.freeze([
   { id: 'users', label: 'Users', kind: 'bespoke', adminOnly: true },
   { id: 'networks', label: 'Networks', kind: 'bespoke' },
   { id: 'account', label: 'Account', kind: 'bespoke' },
-  { id: 'api-tokens', label: 'API tokens', kind: 'bespoke' },
+  // Disabled in node edition: bearer clients can't be routed through the
+  // per-cell proxy, so the server doesn't mount /api/api-tokens or /mcp there
+  // (A7). Hide the whole category in the hosted edition.
+  { id: 'api-tokens', label: 'API tokens', kind: 'bespoke', selfHostedOnly: true },
   { id: 'data', label: 'Data', kind: 'bespoke' },
   { id: 'about', label: 'About', kind: 'bespoke' },
 ]);

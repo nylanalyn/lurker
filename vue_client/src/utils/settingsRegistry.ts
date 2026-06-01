@@ -12,11 +12,38 @@ import {
   CATEGORIES,
   GROUPS,
 } from '../../../shared/settingsRegistry.js';
-import type { SettingValue } from '../../../shared/settingsRegistry.js';
+import type {
+  SettingValue,
+  SettingOption,
+  SettingCategory,
+} from '../../../shared/settingsRegistry.js';
 
 export { REGISTRY, getOption, defaultsAsObject, CATEGORIES, GROUPS };
 
 export function getDefault(key: string): SettingValue | undefined {
   const opt = getOption(key);
   return opt ? opt.default : undefined;
+}
+
+/** Edition/role context that decides which settings surfaces are visible. */
+export interface VisibilityContext {
+  isAdmin: boolean;
+  isNode: boolean;
+}
+
+/**
+ * Whether a settings category shows in the sidebar. `adminOnly` categories are
+ * hidden from non-admins; `selfHostedOnly` ones are hidden in the hosted (node)
+ * edition where the operator, not the tenant, owns them.
+ */
+export function categoryVisible(cat: SettingCategory, ctx: VisibilityContext): boolean {
+  if (cat.adminOnly && !ctx.isAdmin) return false;
+  if (cat.selfHostedOnly && ctx.isNode) return false;
+  return true;
+}
+
+/** Whether an individual registry setting renders, given the edition. */
+export function optionVisible(opt: SettingOption, ctx: Pick<VisibilityContext, 'isNode'>): boolean {
+  if (opt.selfHostedOnly && ctx.isNode) return false;
+  return true;
 }

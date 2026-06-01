@@ -9,88 +9,96 @@
     <p v-if="auth.user" class="account-identity">
       Signed in as <strong>{{ auth.user.username }}</strong>
     </p>
-    <p class="section-desc">
+    <p v-if="config.isNode" class="section-desc">
+      Your account sign-in is managed at
+      <a href="https://lurker.chat" target="_blank" rel="noopener">lurker.chat</a> — passkeys and
+      passwords are set on your account there, not on this server.
+    </p>
+    <p v-else class="section-desc">
       You can sign in with a passkey, a password, or both. Removing your last sign-in method would
       lock you out, so it's blocked.
     </p>
-    <p v-if="passkeyError" class="error inline">{{ passkeyError }}</p>
 
-    <h3 class="subhead">passkeys</h3>
-    <ul v-if="passkeys.length" class="device-list">
-      <li v-for="pk in passkeys" :key="pk.id" class="device passkey">
-        <span class="ua">
-          <input
-            type="text"
-            :value="pk.label || ''"
-            :placeholder="defaultPasskeyLabel(pk)"
-            @change="onRenamePasskey(pk, ($event.target as HTMLInputElement).value)"
-          />
-        </span>
-        <span class="last-seen" :title="pk.lastUsedAt || pk.createdAt">
-          {{
-            pk.lastUsedAt
-              ? `last used ${formatRelative(pk.lastUsedAt)}`
-              : `added ${formatRelative(pk.createdAt)}`
-          }}
-        </span>
-        <button
-          class="link danger"
-          :disabled="!canRemovePasskey || passkeyBusy"
-          :title="removePasskeyTitle"
-          @click="onRemovePasskey(pk)"
-        >
-          remove
-        </button>
-      </li>
-    </ul>
-    <p v-else class="muted small">No passkeys registered.</p>
-    <div class="passkey-add">
-      <button class="link" :disabled="passkeyBusy" @click="onAddPasskey">add passkey</button>
-    </div>
+    <template v-if="!config.isNode">
+      <p v-if="passkeyError" class="error inline">{{ passkeyError }}</p>
 
-    <h3 class="subhead">password</h3>
-    <p v-if="passwordError" class="error inline">{{ passwordError }}</p>
-    <p v-if="passwordNotice" class="muted small">{{ passwordNotice }}</p>
-    <p v-if="!hasPassword" class="muted small">No password set.</p>
-    <p v-else class="muted small">Password is set.</p>
-    <form class="password-form" @submit.prevent="onSavePassword">
-      <label v-if="hasPassword">
-        <span>Current password</span>
-        <input v-model="currentPasswordInput" type="password" autocomplete="current-password" />
-      </label>
-      <label>
-        <span>{{ hasPassword ? 'New password' : 'Password' }}</span>
-        <input
-          v-model="newPasswordInput"
-          type="password"
-          autocomplete="new-password"
-          minlength="8"
-        />
-      </label>
-      <div class="password-actions">
-        <button
-          class="link"
-          type="submit"
-          :disabled="passwordBusy || !newPasswordInput || (hasPassword && !currentPasswordInput)"
-        >
-          {{ hasPassword ? 'change password' : 'set password' }}
-        </button>
-        <button
-          v-if="hasPassword"
-          type="button"
-          class="link danger"
-          :disabled="passwordBusy || passkeys.length === 0"
-          :title="
-            passkeys.length === 0
-              ? 'add a passkey before removing your password'
-              : 'remove password'
-          "
-          @click="onRemovePassword"
-        >
-          remove password
-        </button>
+      <h3 class="subhead">passkeys</h3>
+      <ul v-if="passkeys.length" class="device-list">
+        <li v-for="pk in passkeys" :key="pk.id" class="device passkey">
+          <span class="ua">
+            <input
+              type="text"
+              :value="pk.label || ''"
+              :placeholder="defaultPasskeyLabel(pk)"
+              @change="onRenamePasskey(pk, ($event.target as HTMLInputElement).value)"
+            />
+          </span>
+          <span class="last-seen" :title="pk.lastUsedAt || pk.createdAt">
+            {{
+              pk.lastUsedAt
+                ? `last used ${formatRelative(pk.lastUsedAt)}`
+                : `added ${formatRelative(pk.createdAt)}`
+            }}
+          </span>
+          <button
+            class="link danger"
+            :disabled="!canRemovePasskey || passkeyBusy"
+            :title="removePasskeyTitle"
+            @click="onRemovePasskey(pk)"
+          >
+            remove
+          </button>
+        </li>
+      </ul>
+      <p v-else class="muted small">No passkeys registered.</p>
+      <div class="passkey-add">
+        <button class="link" :disabled="passkeyBusy" @click="onAddPasskey">add passkey</button>
       </div>
-    </form>
+
+      <h3 class="subhead">password</h3>
+      <p v-if="passwordError" class="error inline">{{ passwordError }}</p>
+      <p v-if="passwordNotice" class="muted small">{{ passwordNotice }}</p>
+      <p v-if="!hasPassword" class="muted small">No password set.</p>
+      <p v-else class="muted small">Password is set.</p>
+      <form class="password-form" @submit.prevent="onSavePassword">
+        <label v-if="hasPassword">
+          <span>Current password</span>
+          <input v-model="currentPasswordInput" type="password" autocomplete="current-password" />
+        </label>
+        <label>
+          <span>{{ hasPassword ? 'New password' : 'Password' }}</span>
+          <input
+            v-model="newPasswordInput"
+            type="password"
+            autocomplete="new-password"
+            minlength="8"
+          />
+        </label>
+        <div class="password-actions">
+          <button
+            class="link"
+            type="submit"
+            :disabled="passwordBusy || !newPasswordInput || (hasPassword && !currentPasswordInput)"
+          >
+            {{ hasPassword ? 'change password' : 'set password' }}
+          </button>
+          <button
+            v-if="hasPassword"
+            type="button"
+            class="link danger"
+            :disabled="passwordBusy || passkeys.length === 0"
+            :title="
+              passkeys.length === 0
+                ? 'add a passkey before removing your password'
+                : 'remove password'
+            "
+            @click="onRemovePassword"
+          >
+            remove password
+          </button>
+        </div>
+      </form>
+    </template>
 
     <div class="signout-row">
       <button class="link danger" @click="signOut">sign out</button>
@@ -102,6 +110,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../../stores/auth.js';
+import { useConfigStore } from '../../stores/config.js';
 import { formatRelative } from '../../utils/timestamp.js';
 
 // The auth store's Passkey interface covers the core fields; the server also
@@ -115,6 +124,7 @@ interface PasskeyRow {
 }
 
 const auth = useAuthStore();
+const config = useConfigStore();
 const router = useRouter();
 
 const passkeys = ref<PasskeyRow[]>([]);
@@ -139,6 +149,9 @@ const removePasskeyTitle = computed(() => {
 });
 
 onMounted(() => {
+  // In node edition sign-in lives at the control plane (lurker.chat); the cell
+  // exposes no passkey/password management, so skip those lookups entirely.
+  if (config.isNode) return;
   refreshPasskeys();
   refreshPasswordStatus();
 });
