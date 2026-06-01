@@ -1,0 +1,37 @@
+// Copyright (c) 2026 Brad Root
+// SPDX-License-Identifier: MPL-2.0
+
+// Deployment config the client reads once at boot from the public /api/config
+// endpoint. Today it carries only the edition (self-hosted standalone vs a
+// hosted lurker.chat cell), which the Settings UI uses to gate operator-only
+// surfaces (A3). Defaults to 'standalone' so a fetch failure degrades to the
+// fully-featured self-hosted experience rather than hiding things wrongly.
+
+import { defineStore } from 'pinia';
+import { api } from '../api.js';
+
+export type Edition = 'standalone' | 'node';
+
+export const useConfigStore = defineStore('config', {
+  state: () => ({
+    edition: 'standalone' as Edition,
+    checked: false,
+  }),
+  getters: {
+    // True when this client is talking to a hosted cell, not a self-hosted box.
+    isNode: (s): boolean => s.edition === 'node',
+  },
+  actions: {
+    async fetch(): Promise<Edition> {
+      try {
+        const data = await api<{ edition?: string }>('/api/config');
+        this.edition = data.edition === 'node' ? 'node' : 'standalone';
+      } catch (_err) {
+        this.edition = 'standalone';
+      } finally {
+        this.checked = true;
+      }
+      return this.edition;
+    },
+  },
+});

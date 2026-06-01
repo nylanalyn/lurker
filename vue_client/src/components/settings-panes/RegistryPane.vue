@@ -37,13 +37,15 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useSettingsStore } from '../../stores/settings.js';
-import { CATEGORIES, GROUPS } from '../../utils/settingsRegistry.js';
+import { useConfigStore } from '../../stores/config.js';
+import { CATEGORIES, GROUPS, optionVisible } from '../../utils/settingsRegistry.js';
 import type { SettingOption, SettingValue } from '../../../../shared/settingsRegistry.js';
 import SettingsRow from '../SettingsRow.vue';
 
 const props = defineProps<{ categoryId: string }>();
 
 const settings = useSettingsStore();
+const config = useConfigStore();
 const error = ref('');
 
 const categoryLabel = computed(() => {
@@ -52,7 +54,9 @@ const categoryLabel = computed(() => {
 });
 
 const groups = computed(() => {
-  const items = settings.registry.filter((opt) => opt.category === props.categoryId);
+  const items = settings.registry.filter(
+    (opt) => opt.category === props.categoryId && optionVisible(opt, { isNode: config.isNode }),
+  );
   if (!items.length) return [];
   const groupsMap = new Map<string, SettingOption[]>();
   for (const opt of items) {
