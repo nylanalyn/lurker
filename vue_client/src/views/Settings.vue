@@ -48,8 +48,9 @@ import type { Component } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useSettingsStore } from '../stores/settings.js';
 import { useAuthStore } from '../stores/auth.js';
+import { useConfigStore } from '../stores/config.js';
 import { useSocket } from '../composables/useSocket.js';
-import { CATEGORIES, GROUPS, REGISTRY } from '../utils/settingsRegistry.js';
+import { CATEGORIES, GROUPS, REGISTRY, categoryVisible } from '../utils/settingsRegistry.js';
 import SettingsSidebar from '../components/SettingsSidebar.vue';
 import RegistryPane from '../components/settings-panes/RegistryPane.vue';
 import NotificationsPane from '../components/settings-panes/NotificationsPane.vue';
@@ -66,6 +67,7 @@ useSocket();
 
 const settings = useSettingsStore();
 const auth = useAuthStore();
+const config = useConfigStore();
 const route = useRoute();
 const router = useRouter();
 
@@ -86,7 +88,9 @@ const BESPOKE_PANES: Record<string, Component> = {
   about: AboutPane,
 };
 
-const visibleCategories = computed(() => CATEGORIES.filter((c) => !c.adminOnly || isAdmin.value));
+const visibleCategories = computed(() =>
+  CATEGORIES.filter((c) => categoryVisible(c, { isAdmin: isAdmin.value, isNode: config.isNode })),
+);
 
 const firstCategoryId = computed(() => visibleCategories.value[0]?.id || 'appearance');
 
@@ -129,7 +133,10 @@ const appearanceSubsections = computed<SettingsSubsection[]>(() => {
 watch(
   [() => route.params.category, activeCategoryId, isAdmin],
   ([param, active], _old, onCleanup) => {
-    if (!auth.checked) return;
+    // Wait until both the user and the edition are known, so we never redirect
+    // based on a category set that's about to change (e.g. a node tenant before
+    // /api/config resolves still hides nothing).
+    if (!auth.checked || !config.checked) return;
     if (param !== active) {
       router.replace({ name: 'settings', params: { category: active } });
     }
