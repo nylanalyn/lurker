@@ -69,18 +69,22 @@
         <button
           v-if="isServerBuffer"
           type="button"
-          class="word-btn"
+          class="icon"
+          title="Channel list"
+          aria-label="Channel list"
           @click="active && channelListModal.open(active.networkId)"
         >
-          Channel List
+          <i class="fa-solid fa-hashtag"></i>
         </button>
         <button
           v-if="isServerBuffer"
           type="button"
-          class="word-btn"
+          class="icon"
+          :title="serverConnectActionLabel"
+          :aria-label="serverConnectActionLabel"
           @click="toggleServerConnection"
         >
-          {{ serverConnectActionLabel }}
+          <i :class="serverConnectActionIcon"></i>
         </button>
         <button
           v-if="showBufferCog"
@@ -272,6 +276,11 @@ const serverConnectionState = computed(() => {
 const serverConnectActionLabel = computed(() =>
   serverConnectionState.value === 'connected' ? 'Disconnect' : 'Reconnect',
 );
+const serverConnectActionIcon = computed(() =>
+  serverConnectionState.value === 'connected'
+    ? 'fa-solid fa-plug-circle-xmark'
+    : 'fa-solid fa-plug',
+);
 function toggleServerConnection() {
   if (!active.value) return;
   const id = active.value.networkId;
@@ -423,24 +432,6 @@ useChatBootstrap({ onJump: onJumpToMessage });
 .icon.back {
   margin-left: -4px;
 }
-/* Word-button affordances for the server-buffer bar (Channel List,
-   Disconnect/Reconnect). Same accent treatment as .icon but text-shaped so
-   they fit alongside the global action icons without reading as another
-   ambiguous gear. Min-height matches .icon so they line up on the bar. */
-.word-btn {
-  background: none;
-  border: none;
-  color: var(--accent);
-  cursor: pointer;
-  font: inherit;
-  padding: var(--space-2) var(--space-4);
-  min-height: 36px;
-  white-space: nowrap;
-}
-.word-btn:hover {
-  color: var(--fg);
-}
-
 /* The buffer screen's MessageList + StatusBar + MessageInput chain mirrors
    the desktop rows but in a vertical flex. min-height: 0 on the screen +
    flex: 1 on MessageList is what lets it scroll without pushing the input

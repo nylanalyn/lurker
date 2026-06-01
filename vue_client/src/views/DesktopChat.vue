@@ -63,64 +63,72 @@
       <span class="buffer">System console</span>
     </header>
     <header v-else-if="active" class="topic">
-      <button
-        v-if="isDmHeader"
-        type="button"
-        class="buffer link"
-        title="View profile"
-        @click="openDmProfile"
-      >
-        {{ bufferLabel }}
-      </button>
-      <span v-else class="buffer">{{ bufferLabel }}</span>
-      <template v-if="topic">
-        <span class="sep">│</span>
-        <button type="button" class="topic-text" title="View full topic" @click="showTopic = true">
-          <LinkedText :text="topic" />
+      <div class="topic-meta">
+        <button
+          v-if="isDmHeader"
+          type="button"
+          class="buffer link"
+          title="View profile"
+          @click="openDmProfile"
+        >
+          {{ bufferLabel }}
         </button>
-      </template>
-      <button
-        v-if="isServerBuffer"
-        type="button"
-        class="link word server-right-start"
-        @click="active && channelListModal.open(active.networkId)"
-      >
-        Channel List
-      </button>
-      <button v-if="isServerBuffer" type="button" class="link word" @click="toggleServerConnection">
-        {{ serverConnectActionLabel }}
-      </button>
-      <button
-        v-if="showBufferCog"
-        ref="bufferCogBtn"
-        class="link buffer-cog"
-        title="Buffer actions"
-        @click="openBufferActions"
-      >
-        <i class="fa-solid fa-gear"></i>
-      </button>
-      <button
-        v-if="isServerBuffer"
-        class="link network-cog"
-        title="Edit network"
-        @click="editActiveNetwork"
-      >
-        <i class="fa-solid fa-gear"></i>
-      </button>
-      <button
-        v-if="isChannel"
-        class="link members-toggle"
-        :title="showMembers ? 'Hide members' : 'Show members'"
-        @click="toggleMembers"
-      >
-        <i class="fa-solid fa-users"></i>
-      </button>
-      <span
-        v-if="isChannel && memberCount != null"
-        class="member-count"
-        :title="`${memberCount} ${memberCount === 1 ? 'user' : 'users'} in channel`"
-        >{{ memberCount }}</span
-      >
+        <span v-else class="buffer">{{ bufferLabel }}</span>
+        <template v-if="topic">
+          <span class="sep">│</span>
+          <button type="button" class="topic-text" title="View full topic" @click="showTopic = true">
+            <LinkedText :text="topic" />
+          </button>
+        </template>
+      </div>
+      <div class="topic-actions">
+        <template v-if="isServerBuffer">
+          <button
+            type="button"
+            class="link"
+            title="Channel list"
+            aria-label="Channel list"
+            @click="active && channelListModal.open(active.networkId)"
+          >
+            <i class="fa-solid fa-hashtag"></i>
+          </button>
+          <button
+            type="button"
+            class="link"
+            :title="serverConnectActionLabel"
+            :aria-label="serverConnectActionLabel"
+            @click="toggleServerConnection"
+          >
+            <i :class="serverConnectActionIcon"></i>
+          </button>
+          <button class="link" title="Edit network" @click="editActiveNetwork">
+            <i class="fa-solid fa-gear"></i>
+          </button>
+        </template>
+        <button
+          v-if="showBufferCog"
+          ref="bufferCogBtn"
+          class="link"
+          title="Buffer actions"
+          @click="openBufferActions"
+        >
+          <i class="fa-solid fa-gear"></i>
+        </button>
+        <button
+          v-if="isChannel"
+          class="link"
+          :title="showMembers ? 'Hide members' : 'Show members'"
+          @click="toggleMembers"
+        >
+          <i class="fa-solid fa-users"></i>
+        </button>
+        <span
+          v-if="isChannel && memberCount != null"
+          class="member-count"
+          :title="`${memberCount} ${memberCount === 1 ? 'user' : 'users'} in channel`"
+          >{{ memberCount }}</span
+        >
+      </div>
     </header>
     <div v-if="active || isSystemConsole" class="topic-divider"></div>
 
@@ -416,6 +424,11 @@ const serverConnectionState = computed(() => {
 const serverConnectActionLabel = computed(() =>
   serverConnectionState.value === 'connected' ? 'Disconnect' : 'Reconnect',
 );
+const serverConnectActionIcon = computed(() =>
+  serverConnectionState.value === 'connected'
+    ? 'fa-solid fa-plug-circle-xmark'
+    : 'fa-solid fa-plug',
+);
 function toggleServerConnection() {
   if (!active.value) return;
   const id = active.value.networkId;
@@ -595,7 +608,7 @@ useChatBootstrap({ onJump: onJumpToMessage });
   padding: var(--space-4) var(--space-6);
   display: flex;
   align-items: baseline;
-  gap: 1ch;
+  justify-content: space-between;
   white-space: nowrap;
   overflow: hidden;
 }
@@ -660,36 +673,23 @@ button.buffer.link:hover {
   grid-area: input;
 }
 
-/* Pin the right-side cluster (cog / members toggle / count) to the far
-   right of the topic bar regardless of what's between them and the buffer
-   label. The topic text shrinks first (it has min-width: 0 + ellipsis) so
-   the cluster stays put. The cog claims the slack via margin-left:auto and
-   the remaining elements follow it in DOM order. When the cog is absent
-   (server buffers), the server network-cog takes the same slot, or
-   members-toggle's own margin-left:auto takes over. Count sits to the
-   right of the icon. */
-.topic .buffer-cog,
-.topic .server-right-start {
-  margin-left: auto;
-  padding-left: var(--space-4);
+/* Two-group layout for the topic bar: .topic-meta (name + │ + topic text)
+   sits left, .topic-actions (buffer/network/channel buttons) sits right.
+   .topic uses justify-content:space-between to split them. .topic-meta
+   shrinks first via min-width:0 + topic-text ellipsis, so the action
+   cluster stays anchored to the right edge. */
+.topic-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 1ch;
+  min-width: 0;
+  overflow: hidden;
 }
-.topic .network-cog {
-  padding-left: var(--space-4);
-}
-.topic .buffer-cog + .members-toggle {
-  margin-left: 0;
-  padding-left: var(--space-2);
-}
-.topic .members-toggle {
-  margin-left: auto;
-  padding-left: var(--space-4);
-}
-/* Word-button styling for the server-buffer affordances (Channel List,
-   Disconnect/Reconnect). They cluster on the right alongside the
-   network-cog — the first one (Channel List) carries margin-left:auto via
-   .server-right-start, and the rest follow it in DOM order. */
-.topic .link.word {
-  padding: 0 var(--space-3);
+.topic-actions {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  flex-shrink: 0;
 }
 .topic .member-count {
   color: var(--fg-muted);

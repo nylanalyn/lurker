@@ -33,7 +33,7 @@ export function useNetworkActions() {
       },
       {
         label: isConnected ? 'Disconnect' : 'Reconnect',
-        icon: 'fa-solid fa-plug',
+        icon: isConnected ? 'fa-solid fa-plug-circle-xmark' : 'fa-solid fa-plug',
         onClick: () => toggleConnection(net.id),
       },
     ];
