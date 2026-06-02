@@ -69,18 +69,22 @@
         <button
           v-if="isServerBuffer"
           type="button"
-          class="word-btn"
-          @click="showChannelList = true"
+          class="icon"
+          title="Channel list"
+          aria-label="Channel list"
+          @click="active && channelListModal.open(active.networkId)"
         >
-          Channel List
+          <i class="fa-solid fa-hashtag"></i>
         </button>
         <button
           v-if="isServerBuffer"
           type="button"
-          class="word-btn"
+          class="icon"
+          :title="serverConnectActionLabel"
+          :aria-label="serverConnectActionLabel"
           @click="toggleServerConnection"
         >
-          {{ serverConnectActionLabel }}
+          <i :class="serverConnectActionIcon"></i>
         </button>
         <button
           v-if="showBufferCog"
@@ -118,8 +122,8 @@
     </section>
 
     <NetworkForm
-      v-if="showNetworkForm"
-      :network="editingNetwork ?? undefined"
+      v-if="networkEditor.isOpen"
+      :network="networkEditor.editingNetwork ?? undefined"
       @close="closeNetworkForm"
     />
     <HighlightsModal
@@ -135,9 +139,9 @@
       @close="showTopic = false"
     />
     <ChannelListModal
-      v-if="showChannelList && active"
-      :network-id="active.networkId"
-      @close="showChannelList = false"
+      v-if="channelListModal.isOpen && channelListModal.networkId !== null"
+      :network-id="channelListModal.networkId!"
+      @close="channelListModal.close()"
     />
     <RecentUploadsModal v-if="showUploads" @close="showUploads = false" />
     <SearchModal v-if="showSearch" @close="showSearch = false" @jump="onJumpToMessage" />
@@ -158,7 +162,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import type { Network } from '../stores/networks.js';
 import type { BufferLike } from '../composables/useBufferActions.js';
 import { useNetworksStore } from '../stores/networks.js';
@@ -183,6 +187,8 @@ import NickNoteModal from '../components/NickNoteModal.vue';
 import UserProfileModal from '../components/UserProfileModal.vue';
 import { useNickNotesStore } from '../stores/nickNotes.js';
 import { useWhoisStore } from '../stores/whois.js';
+import { useChannelListModal } from '../composables/useChannelListModal.js';
+import { useNetworkEditor } from '../composables/useNetworkEditor.js';
 import { useJumpToMessage } from '../composables/useJumpToMessage.js';
 import { useVisualViewport } from '../composables/useVisualViewport.js';
 
@@ -216,15 +222,14 @@ function openSystemConsole() {
 // Back arrows walk the stack backwards. We don't sync this to the URL — the
 // flow is short and stateful, and a URL would expose us to bookmarks that
 // land on the buffer screen with no active buffer.
+const channelListModal = reactive(useChannelListModal());
+const networkEditor = reactive(useNetworkEditor());
 const screen = ref('list');
 const showHighlights = ref(false);
 const showBookmarks = ref(false);
 const showTopic = ref(false);
-const showChannelList = ref(false);
 const showUploads = ref(false);
 const showSearch = ref(false);
-const showNetworkForm = ref(false);
-const editingNetwork = ref<Network | null>(null);
 const pendingScrollId = ref<number | null>(null);
 const messageInputRef = ref<{ focus: () => void } | null>(null);
 const bufferCogBtn = ref<HTMLElement | null>(null);
@@ -251,15 +256,13 @@ function openBufferActions() {
 }
 
 function openAddNetwork() {
-  editingNetwork.value = null;
-  showNetworkForm.value = true;
+  networkEditor.open();
 }
 
 function editActiveNetwork() {
   const net = active.value?.network as Network | undefined;
   if (!net) return;
-  editingNetwork.value = net;
-  showNetworkForm.value = true;
+  networkEditor.open(net);
 }
 
 // State-aware connect/disconnect for the server buffer header. Mirrors the
@@ -272,6 +275,11 @@ const serverConnectionState = computed(() => {
 });
 const serverConnectActionLabel = computed(() =>
   serverConnectionState.value === 'connected' ? 'Disconnect' : 'Reconnect',
+);
+const serverConnectActionIcon = computed(() =>
+  serverConnectionState.value === 'connected'
+    ? 'fa-solid fa-plug-circle-xmark'
+    : 'fa-solid fa-plug',
 );
 function toggleServerConnection() {
   if (!active.value) return;
@@ -286,8 +294,7 @@ function toggleServerConnection() {
 }
 
 function closeNetworkForm() {
-  showNetworkForm.value = false;
-  editingNetwork.value = null;
+  networkEditor.close();
 }
 
 // BufferList calls buffers.activate() directly on click; we react to the
@@ -425,24 +432,6 @@ useChatBootstrap({ onJump: onJumpToMessage });
 .icon.back {
   margin-left: -4px;
 }
-/* Word-button affordances for the server-buffer bar (Channel List,
-   Disconnect/Reconnect). Same accent treatment as .icon but text-shaped so
-   they fit alongside the global action icons without reading as another
-   ambiguous gear. Min-height matches .icon so they line up on the bar. */
-.word-btn {
-  background: none;
-  border: none;
-  color: var(--accent);
-  cursor: pointer;
-  font: inherit;
-  padding: var(--space-2) var(--space-4);
-  min-height: 36px;
-  white-space: nowrap;
-}
-.word-btn:hover {
-  color: var(--fg);
-}
-
 /* The buffer screen's MessageList + StatusBar + MessageInput chain mirrors
    the desktop rows but in a vertical flex. min-height: 0 on the screen +
    flex: 1 on MessageList is what lets it scroll without pushing the input
