@@ -224,7 +224,11 @@ router.get('/', (req: Request, res: Response) => {
   const rows: UploadListRow[] = listUploads(req.user!.id, { before, limit });
   res.json({
     items: rows.map((r) => {
-      const { has_thumbnail, thumbnail_url, ...rest } = r;
+      const { has_thumbnail, thumbnail_url, removed, ...rest } = r;
+      // A moderated-away upload keeps its row as a tombstone, but its bytes are
+      // gone (remote object deleted, BLOB cleared) — advertise no thumbnail so
+      // the client renders the tombstone instead of chasing a dead URL.
+      if (removed) return { ...rest, removed: true };
       // Prefer a remote CDN thumbnail (node edition); otherwise fall back to the
       // local BLOB-serving route when an inline thumbnail exists.
       const thumb = thumbnail_url || (has_thumbnail ? `/api/uploads/${r.id}/thumb` : null);

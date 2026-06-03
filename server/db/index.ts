@@ -553,6 +553,11 @@ ensureColumn('upload_history', 'thumbnail_url', 'TEXT');
 // never reads it — the flush is node-gated, so it has no effect there.
 ensureColumn('upload_history', 'synced_to_cp', 'INTEGER NOT NULL DEFAULT 0');
 
+// Set when the control plane takes the upload down for moderation. The row stays
+// (so the owner sees a "removed by moderation" tombstone instead of a dead
+// image), but the bytes are gone from storage. Standalone never sets it.
+ensureColumn('upload_history', 'removed', 'INTEGER NOT NULL DEFAULT 0');
+
 // Schema versioning lets us retire one-shot recovery blocks once every
 // production DB has run through them. Bump SCHEMA_VERSION when adding a new
 // recovery block, and delete blocks for versions far enough in the past.

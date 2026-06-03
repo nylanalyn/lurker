@@ -77,6 +77,7 @@ export function reportUploadSoon(rec: UploadReport): void {
   if (!readConfig()) return;
   void reportUpload(rec).then((ok) => {
     if (ok) markUploadSynced(rec.cell_upload_id);
+    return ok;
   });
 }
 

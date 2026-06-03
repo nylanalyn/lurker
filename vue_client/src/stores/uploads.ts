@@ -36,6 +36,9 @@ export interface UploadItem {
   filename: string | null;
   mime: string | null;
   thumbnail_url?: string;
+  // True when the hosted operator has moderated the upload away. The row stays
+  // as a tombstone; its bytes are gone from storage.
+  removed?: boolean;
 }
 
 export const useUploadsStore = defineStore('uploads', {

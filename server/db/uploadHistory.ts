@@ -36,6 +36,9 @@ export interface UploadListRow {
   created_at: string;
   has_thumbnail: number;
   thumbnail_url: string | null;
+  // 1 once the control plane has moderated the upload away. The row stays so the
+  // owner sees a tombstone, but its bytes are gone from storage.
+  removed: number;
 }
 
 /** Fields passed to insertUpload. */
@@ -87,7 +90,7 @@ export function listUploads(
       .prepare(
         `
       SELECT id, provider, url, filename, mime, byte_size, width, height, created_at,
-             thumbnail_url, (thumbnail IS NOT NULL) AS has_thumbnail
+             thumbnail_url, removed, (thumbnail IS NOT NULL) AS has_thumbnail
       FROM upload_history
       WHERE user_id = ? AND id < ?
       ORDER BY id DESC
@@ -100,7 +103,7 @@ export function listUploads(
     .prepare(
       `
     SELECT id, provider, url, filename, mime, byte_size, width, height, created_at,
-           thumbnail_url, (thumbnail IS NOT NULL) AS has_thumbnail
+           thumbnail_url, removed, (thumbnail IS NOT NULL) AS has_thumbnail
     FROM upload_history
     WHERE user_id = ?
     ORDER BY id DESC
@@ -162,4 +165,16 @@ export function listUnsyncedUploads(limit = 50): UnsyncedUploadRow[] {
 
 export function markUploadSynced(id: number): void {
   db.prepare('UPDATE upload_history SET synced_to_cp = 1 WHERE id = ?').run(Number(id));
+}
+
+// Control-plane-driven moderation takedown, addressed by the cell's own upload
+// id (what the cell reported as cell_upload_id). Flips the row to `removed` and
+// drops any inline thumbnail BLOB so the bytes are gone locally too — the row
+// stays as a tombstone. Not user-scoped: this is a privileged node-API action,
+// never a tenant request. Idempotent; returns whether a row matched.
+export function markUploadRemovedById(id: number): boolean {
+  const info = db
+    .prepare('UPDATE upload_history SET removed = 1, thumbnail = NULL WHERE id = ?')
+    .run(Number(id));
+  return info.changes > 0;
 }
