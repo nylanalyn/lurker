@@ -547,6 +547,12 @@ ensureColumn('buffer_reads', 'cleared_at', 'TEXT');
 // to serving the BLOB via /api/uploads/:id/thumb.
 ensureColumn('upload_history', 'thumbnail_url', 'TEXT');
 
+// Node edition reports each upload to the control plane's moderation index. This
+// flag tracks whether that report landed; a periodic flush retries rows still at
+// 0 so a CP outage never silently drops a record. Standalone leaves it at 0 and
+// never reads it — the flush is node-gated, so it has no effect there.
+ensureColumn('upload_history', 'synced_to_cp', 'INTEGER NOT NULL DEFAULT 0');
+
 // Schema versioning lets us retire one-shot recovery blocks once every
 // production DB has run through them. Bump SCHEMA_VERSION when adding a new
 // recovery block, and delete blocks for versions far enough in the past.

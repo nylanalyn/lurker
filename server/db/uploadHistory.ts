@@ -131,3 +131,35 @@ export function deleteUpload(userId: number, id: number): boolean {
     .run(userId, Number(id));
   return info.changes > 0;
 }
+
+/** A row the moderation reporter still needs to push to the control plane. */
+export interface UnsyncedUploadRow {
+  id: number;
+  user_id: number;
+  url: string;
+  thumbnail_url: string | null;
+  mime: string;
+  byte_size: number;
+  width: number | null;
+  height: number | null;
+}
+
+// Node-edition rows not yet acknowledged by the control plane's moderation
+// index. Drained by the periodic flush so a CP outage at upload time is
+// eventually reconciled rather than losing the record. Oldest first.
+export function listUnsyncedUploads(limit = 50): UnsyncedUploadRow[] {
+  const lim = Math.max(1, Math.min(500, Number(limit) || 50));
+  return db
+    .prepare(
+      `SELECT id, user_id, url, thumbnail_url, mime, byte_size, width, height
+       FROM upload_history
+       WHERE synced_to_cp = 0
+       ORDER BY id ASC
+       LIMIT ?`,
+    )
+    .all(lim) as UnsyncedUploadRow[];
+}
+
+export function markUploadSynced(id: number): void {
+  db.prepare('UPDATE upload_history SET synced_to_cp = 1 WHERE id = ?').run(Number(id));
+}

@@ -19,6 +19,7 @@ import type { UploadListRow } from '../db/uploadHistory.js';
 import { insertUpload, listUploads, getThumbnail, deleteUpload } from '../db/uploadHistory.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { isNodeMode } from '../utils/edition.js';
+import { reportUploadSoon } from '../services/moderationReport.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -193,6 +194,22 @@ router.post(
         thumbnail: thumbnailBlob,
         thumbnail_url: thumbnailUrl,
       });
+
+      // Node edition: report the upload to the control plane's moderation index.
+      // Fire-and-forget — never blocks the response; the flush reconciles if the
+      // CP is unreachable. No-op in standalone.
+      if (isNodeMode()) {
+        reportUploadSoon({
+          cell_upload_id: id,
+          cell_user_id: req.user!.id,
+          url: result.url,
+          thumb_url: thumbnailUrl,
+          mime: outMime,
+          byte_size: outByteSize,
+          width: outWidth,
+          height: outHeight,
+        });
+      }
 
       res.json({ id, url: result.url, ...(thumbnailUrl ? { thumbnail_url: thumbnailUrl } : {}) });
     } catch (err) {

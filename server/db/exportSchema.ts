@@ -240,6 +240,7 @@ export const EXPORT_TABLES = Object.freeze({
       'height',
       'thumbnail',
       'thumbnail_url',
+      'synced_to_cp',
       'created_at',
     ],
   },
