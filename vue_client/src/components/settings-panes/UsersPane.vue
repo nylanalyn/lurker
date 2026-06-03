@@ -18,6 +18,7 @@
         <span class="ua">
           {{ u.username }}
           <span v-if="u.role === 'admin'" class="role-tag">admin</span>
+          <span v-if="u.isPaused" class="paused-tag">paused</span>
         </span>
         <span
           class="last-seen"
@@ -26,6 +27,21 @@
           <template v-if="u.lastSeenAt">last seen {{ formatRelative(u.lastSeenAt) }}</template>
           <template v-else>joined {{ formatRelative(u.createdAt) }}</template>
         </span>
+        <button
+          v-if="!config.isNode"
+          class="link"
+          :disabled="u.id === auth.user?.id || adminBusy"
+          :title="
+            u.id === auth.user?.id
+              ? 'cannot pause yourself'
+              : u.isPaused
+                ? 'resume — reconnect to IRC'
+                : 'pause — disconnect from IRC and make read-only'
+          "
+          @click="u.isPaused ? onResumeUser(u) : onPauseUser(u)"
+        >
+          {{ u.isPaused ? 'resume' : 'pause' }}
+        </button>
         <button
           class="link danger"
           :disabled="u.id === auth.user?.id || adminBusy"
@@ -83,6 +99,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useAuthStore } from '../../stores/auth.js';
 import { useAdminStore } from '../../stores/admin.js';
+import { useConfigStore } from '../../stores/config.js';
 import type { AdminUser, AdminInvite } from '../../stores/admin.js';
 import { formatRelative } from '../../utils/timestamp.js';
 
@@ -103,6 +120,9 @@ interface AdminInviteRow extends AdminInvite {
 
 const auth = useAuthStore();
 const adminStore = useAdminStore();
+// Pause/resume is a self-hosted control only — in node edition the control plane
+// owns account state, so the buttons are hidden.
+const config = useConfigStore();
 
 // The store types these as the base interfaces; cast to the extended rows that
 // include fields the server returns but the interfaces don't declare yet.
@@ -167,6 +187,36 @@ async function onDeleteUser(user: AdminUserRow) {
   }
 }
 
+async function onPauseUser(user: AdminUserRow) {
+  if (
+    !confirm(
+      `Pause ${user.username}? They'll be disconnected from IRC and read-only until resumed.`,
+    )
+  )
+    return;
+  adminError.value = '';
+  adminBusy.value = true;
+  try {
+    await adminStore.pauseUser(user.id);
+  } catch (e: any) {
+    adminError.value = e.message || 'failed to pause user';
+  } finally {
+    adminBusy.value = false;
+  }
+}
+
+async function onResumeUser(user: AdminUserRow) {
+  adminError.value = '';
+  adminBusy.value = true;
+  try {
+    await adminStore.resumeUser(user.id);
+  } catch (e: any) {
+    adminError.value = e.message || 'failed to resume user';
+  } finally {
+    adminBusy.value = false;
+  }
+}
+
 function copyInviteUrl(url: string) {
   if (navigator.clipboard?.writeText) {
     navigator.clipboard.writeText(url).catch(() => {
@@ -181,6 +231,13 @@ function copyInviteUrl(url: string) {
 .user-row .role-tag {
   color: var(--accent);
   border: 1px solid var(--accent);
+  padding: 0 var(--space-2);
+  margin-left: var(--space-3);
+  text-transform: uppercase;
+}
+.user-row .paused-tag {
+  color: var(--warn);
+  border: 1px solid var(--warn);
   padding: 0 var(--space-2);
   margin-left: var(--space-3);
   text-transform: uppercase;

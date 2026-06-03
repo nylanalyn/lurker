@@ -540,7 +540,14 @@ router.post('/logout', (req: Request, res: Response) => {
 });
 
 router.get('/me', requireAuth, (req: Request, res: Response) => {
-  res.json({ user: { id: req.user!.id, username: req.user!.username, role: req.user!.role } });
+  res.json({
+    user: {
+      id: req.user!.id,
+      username: req.user!.username,
+      role: req.user!.role,
+      is_paused: !!req.user!.is_paused,
+    },
+  });
 });
 
 // ---------- passkey management (authed) ----------

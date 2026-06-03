@@ -33,6 +33,7 @@ const USERS_SKIPPED_COLUMNS: Record<string, string> = Object.freeze({
   role: 'first-user-becomes-admin rule on the target side reassigns roles',
   last_seen_at: 'tracked locally by each instance',
   created_at: 'tracked locally by each instance',
+  is_paused: 'account access state, owned by the local instance / control plane',
 });
 
 // scope values control how the exporter filters rows for a given userId.

@@ -23,7 +23,7 @@
       v-model="text"
       rows="1"
       :placeholder="placeholder"
-      :disabled="!active"
+      :disabled="!active || isPaused"
       :spellcheck="systemFeatures.spellcheck"
       :autocorrect="systemFeatures.autocorrect"
       :autocapitalize="systemFeatures.autocapitalize"
@@ -108,6 +108,7 @@
 import { ref, computed, watch, onBeforeUnmount, onMounted } from 'vue';
 import { useNetworksStore } from '../stores/networks.js';
 import { useBuffersStore } from '../stores/buffers.js';
+import { useAuthStore } from '../stores/auth.js';
 import { useInputHistoryStore } from '../stores/inputHistory.js';
 import { useDraftStore } from '../stores/drafts.js';
 import { useSettingsStore } from '../stores/settings.js';
@@ -152,6 +153,7 @@ import type { Buffer } from '../stores/buffers.js';
 
 const networks = useNetworksStore();
 const buffers = useBuffersStore();
+const auth = useAuthStore();
 const inputHistory = useInputHistoryStore();
 const drafts = useDraftStore();
 const settings = useSettingsStore();
@@ -220,8 +222,13 @@ const ownNick = computed(() => {
   return networks.states[a.networkId]?.nick || '';
 });
 const isServer = computed(() => active.value?.target?.startsWith(':server:'));
-const sendable = computed(() => !!active.value && !isServer.value);
+// Paused accounts are read-only — no buffer is sendable. The server also
+// rejects any send that slips through, but gating here keeps the affordance
+// honest (disabled composer, no optimistic bubble).
+const isPaused = computed(() => auth.isPaused);
+const sendable = computed(() => !!active.value && !isServer.value && !isPaused.value);
 const placeholder = computed(() => {
+  if (isPaused.value) return 'Account paused — read only';
   if (!active.value) return 'Select a buffer';
   if (isServer.value) return '/raw <line>';
   return 'try /help';

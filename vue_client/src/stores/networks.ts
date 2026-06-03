@@ -3,6 +3,7 @@
 
 import { defineStore } from 'pinia';
 import { api } from '../api.js';
+import { useAuthStore } from './auth.js';
 
 export interface Network {
   id: number;
@@ -108,16 +109,24 @@ export const useNetworksStore = defineStore('networks', {
       delete this.states[id];
       if (this.activeKey?.startsWith(`${id}::`)) this.activeKey = null;
     },
+    // The IRC connection toggles are the writes most reachable from the
+    // read-only browse view (header toggle, network context menu), so they get
+    // a client-side short-circuit to avoid firing a request the server would
+    // 403 anyway. Config mutations (create/update/remove) are reached only from
+    // editing UI a paused user shouldn't be in, and stay server-enforced.
     async connect(id: number) {
+      if (useAuthStore().isPaused) return;
       await api(`/api/networks/${id}/connect`, { method: 'POST' });
     },
     async disconnect(id: number, reason?: string) {
+      if (useAuthStore().isPaused) return;
       await api(`/api/networks/${id}/disconnect`, {
         method: 'POST',
         ...(reason ? { body: { reason } } : {}),
       });
     },
     async reconnect(id: number) {
+      if (useAuthStore().isPaused) return;
       await api(`/api/networks/${id}/reconnect`, { method: 'POST' });
     },
     setActive(networkId: number | string, target: string) {

@@ -8,6 +8,7 @@ export interface AdminUser {
   id: number;
   username: string;
   createdAt: string;
+  isPaused?: boolean;
 }
 
 export interface AdminInvite {
@@ -41,6 +42,16 @@ export const useAdminStore = defineStore('admin', {
     async deleteUser(id: number) {
       await api(`/api/admin/users/${id}`, { method: 'DELETE' });
       this.users = this.users.filter((u) => u.id !== id);
+    },
+    async pauseUser(id: number) {
+      await api(`/api/admin/users/${id}/pause`, { method: 'POST' });
+      const u = this.users.find((x) => x.id === id);
+      if (u) u.isPaused = true;
+    },
+    async resumeUser(id: number) {
+      await api(`/api/admin/users/${id}/resume`, { method: 'POST' });
+      const u = this.users.find((x) => x.id === id);
+      if (u) u.isPaused = false;
     },
     async fetchInvites() {
       this.error = '';

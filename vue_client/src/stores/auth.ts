@@ -10,6 +10,10 @@ export interface AuthUser {
   id: number;
   username: string;
   role: 'admin' | 'user';
+  // Read-only account: still authenticated and able to browse history, but
+  // disconnected from IRC and barred from sending. Seeded by /api/auth/me and
+  // flipped live by the server's 'account-state' WS event (see setPaused).
+  is_paused?: boolean;
 }
 
 export interface SetupStatus {
@@ -31,7 +35,17 @@ export const useAuthStore = defineStore('auth', {
     error: null as string | null,
     setupStatus: null as SetupStatus | null, // { needsSetup, mode?, username? }
   }),
+  getters: {
+    // Whole-UI read-only gate. Components key their disabled/banner state off
+    // this rather than poking at user?.is_paused directly.
+    isPaused: (s): boolean => s.user?.is_paused === true,
+  },
   actions: {
+    // Live flip from the server's 'account-state' WS event, so an open tab
+    // enters/leaves read-only without a reload.
+    setPaused(paused: boolean) {
+      if (this.user) this.user.is_paused = paused;
+    },
     async fetchMe() {
       try {
         const { user } = await api('/api/auth/me');

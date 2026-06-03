@@ -3,7 +3,7 @@
 
 import { Router } from 'express';
 import type { Request, Response } from 'express';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, blockWritesWhenPaused } from '../middleware/auth.js';
 import type { Network } from '../db/networks.js';
 import {
   listNetworksForUser,
@@ -19,6 +19,10 @@ import ircManager from '../services/ircManager.js';
 
 const router = Router();
 router.use(requireAuth);
+// Paused accounts are read-only: every connect/reconnect/join/part and all
+// network-config mutation here is blocked, while GET listing still works so the
+// sidebar renders. See blockWritesWhenPaused.
+router.use(blockWritesWhenPaused);
 
 function networkPayload(network: Network | undefined | null): Record<string, unknown> | null {
   if (!network) return null;

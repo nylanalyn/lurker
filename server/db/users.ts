@@ -13,23 +13,32 @@ export interface User {
   role: UserRole;
   created_at: string;
   last_seen_at: string | null;
+  // 0 | 1. Paused accounts are disconnected from IRC and barred from
+  // reconnecting/sending, but retain read-only access to their history.
+  is_paused: number;
 }
 
 export function findUserByUsername(username: string): User | undefined {
   return db
-    .prepare('SELECT id, username, role, created_at, last_seen_at FROM users WHERE username = ?')
+    .prepare(
+      'SELECT id, username, role, created_at, last_seen_at, is_paused FROM users WHERE username = ?',
+    )
     .get(username) as User | undefined;
 }
 
 export function findUserById(id: number | bigint): User | undefined {
   return db
-    .prepare('SELECT id, username, role, created_at, last_seen_at FROM users WHERE id = ?')
+    .prepare(
+      'SELECT id, username, role, created_at, last_seen_at, is_paused FROM users WHERE id = ?',
+    )
     .get(id) as User | undefined;
 }
 
 export function listUsers(): User[] {
   return db
-    .prepare('SELECT id, username, role, created_at, last_seen_at FROM users ORDER BY id')
+    .prepare(
+      'SELECT id, username, role, created_at, last_seen_at, is_paused FROM users ORDER BY id',
+    )
     .all() as User[];
 }
 
@@ -76,6 +85,17 @@ export function userHasPassword(userId: number): boolean {
 
 export function setPasswordHash(userId: number, hash: string | null): boolean {
   const info = db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, userId);
+  return info.changes > 0;
+}
+
+// Flip account access state. Returns false only when no row matched (unknown
+// id); an idempotent set to the same value still returns true. The caller owns
+// the side effects of a transition — tearing down / re-establishing IRC — since
+// this only writes the row.
+export function setUserPaused(userId: number, paused: boolean): boolean {
+  const info = db
+    .prepare('UPDATE users SET is_paused = ? WHERE id = ?')
+    .run(paused ? 1 : 0, userId);
   return info.changes > 0;
 }
 

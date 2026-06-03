@@ -4,7 +4,10 @@
 -->
 
 <template>
-  <RouterView />
+  <div class="app-shell" :class="{ 'is-paused': auth.isPaused }">
+    <PausedBanner v-if="auth.isPaused" />
+    <RouterView />
+  </div>
   <ToastContainer />
   <ContextMenu />
 </template>
@@ -17,6 +20,7 @@ import { useConfigStore } from './stores/config.js';
 import { useTheme } from './composables/useTheme.js';
 import ToastContainer from './components/ToastContainer.vue';
 import ContextMenu from './components/ContextMenu.vue';
+import PausedBanner from './components/PausedBanner.vue';
 
 const auth = useAuthStore();
 const settings = useSettingsStore();
