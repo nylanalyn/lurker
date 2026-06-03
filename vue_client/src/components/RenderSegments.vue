@@ -17,6 +17,8 @@
       target="_blank"
       rel="noreferrer noopener"
       :style="styleFor(seg)"
+      @pointerenter="onLinkPreload(seg.url!)"
+      @focus="onLinkPreload(seg.url!)"
       @click="onLinkClick($event, seg.url!)"
       >{{ seg.text }}</a
     >
@@ -86,15 +88,24 @@ function hasStyle(seg: RenderSegment): boolean {
   return segmentHasStyle(seg);
 }
 
+function isModalImageUrl(url: string): boolean {
+  if (settings.effective('uploads.image_modal.enabled') !== true) return false;
+
+  const hoarderUrl = settings.effective('uploads.hoarder.url');
+  return isUploadImageUrl(url, typeof hoarderUrl === 'string' ? hoarderUrl : '');
+}
+
+function onLinkPreload(url: string): void {
+  if (!isModalImageUrl(url)) return;
+  imageModal.preload(url);
+}
+
 function onLinkClick(event: MouseEvent, url: string): void {
   event.stopPropagation();
 
   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
     return;
-  if (settings.effective('uploads.image_modal.enabled') !== true) return;
-
-  const hoarderUrl = settings.effective('uploads.hoarder.url');
-  if (!isUploadImageUrl(url, typeof hoarderUrl === 'string' ? hoarderUrl : '')) return;
+  if (!isModalImageUrl(url)) return;
 
   event.preventDefault();
   imageModal.open(url);
