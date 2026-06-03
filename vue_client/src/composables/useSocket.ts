@@ -330,6 +330,13 @@ function handleMessage(raw: string): void {
     applyEvent(payload);
     return;
   }
+  if (payload.kind === 'account-state') {
+    // The account was paused/resumed out-of-band (operator or control plane).
+    // Flip the whole UI into/out of read-only in place; the server has already
+    // torn down or re-established the IRC connections.
+    useAuthStore().setPaused(!!payload.paused);
+    return;
+  }
   if (payload.kind === 'settings') {
     const settings = useSettingsStore();
     settings.applyRemote(payload);

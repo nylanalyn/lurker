@@ -269,3 +269,23 @@ textarea:focus {
   scrollbar-color: var(--bg-soft) transparent;
   scrollbar-width: thin;
 }
+
+/* Paused-account read-only shell. The wrapper is invisible to layout until the
+   account is paused (display:contents), so the unpaused app renders exactly as
+   before. When paused it becomes a flex column: PausedBanner takes its natural
+   height at the top and the route view fills the rest — overriding each view's
+   own 100dvh root, which would otherwise overflow below the banner. The child
+   selector's 3-class specificity wins over a view's own (scoped) height rule. */
+.app-shell {
+  display: contents;
+}
+.app-shell.is-paused {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+.app-shell.is-paused > :not(.paused-banner) {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+}

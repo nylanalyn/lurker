@@ -13,6 +13,7 @@ import {
   deleteUser,
   findUserById,
   findUserByUsername,
+  setUserPaused,
 } from '../db/users.js';
 import ircManager from '../services/ircManager.js';
 import { sign as signCookie } from 'cookie-signature';
@@ -121,6 +122,71 @@ router.post('/users/:id/session', (req: Request, res: Response) => {
   const { token } = createSession(id);
   const value = 's:' + signCookie(token, secret);
   res.json({ cookieName: SESSION_COOKIE, value, maxAgeMs: getCookieOptions().maxAge });
+});
+
+// Pause a tenant account: flip the read-only flag and tear down live IRC, but
+// keep all data and the session (the opposite of DELETE). The control plane
+// calls this when an account is suspended / past-due / canceled — the cell
+// stays billing-blind and only mirrors this one verdict. Idempotent: re-pausing
+// an already-paused account is a no-op success, which is what the orchestrator's
+// reconciliation sweep relies on.
+router.post('/users/:id/pause', (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: 'invalid id' });
+    return;
+  }
+  const target = findUserById(id);
+  if (!target) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
+  // The operator's admin account is not a tenant — never let the orchestrator
+  // pause it (mirrors the delete/session guards).
+  if (target.role === 'admin') {
+    res.status(409).json({ error: 'refusing to pause an admin account' });
+    return;
+  }
+  // Already paused → quiet no-op. The orchestrator's reconciliation re-pushes
+  // pauses on every cell heartbeat; short-circuiting here keeps that sweep from
+  // re-running suspendUser + re-fanning the read-only event every 30s.
+  if (target.is_paused) {
+    res.json({ ok: true, alreadyPaused: true });
+    return;
+  }
+  // Flag first so the startNetwork gate is already closed before suspendUser
+  // drops the connections — no window for an in-flight reconnect to slip back in.
+  setUserPaused(id, true);
+  ircManager.suspendUser(id);
+  res.json({ ok: true });
+});
+
+// Resume a paused tenant account: clear the flag, then re-establish autoconnect
+// networks. Idempotent. Order matters — setUserPaused(false) must land before
+// resumeUser so the startNetwork gate lets the reconnect through.
+router.post('/users/:id/resume', (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: 'invalid id' });
+    return;
+  }
+  const target = findUserById(id);
+  if (!target) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
+  if (target.role === 'admin') {
+    res.status(409).json({ error: 'refusing to resume an admin account' });
+    return;
+  }
+  // Already active → quiet no-op, so a redundant resume doesn't re-init networks.
+  if (!target.is_paused) {
+    res.json({ ok: true, alreadyActive: true });
+    return;
+  }
+  setUserPaused(id, false);
+  ircManager.resumeUser(id);
+  res.json({ ok: true });
 });
 
 export default router;

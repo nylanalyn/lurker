@@ -63,3 +63,16 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
   }
   next();
 }
+
+// Read-only gate for paused accounts. Stack on top of requireAuth. GET/HEAD
+// reads fall through so a paused user can still browse their history; any
+// mutating method gets a clean 403. The authoritative block on IRC traffic is
+// the startNetwork gate in ircManager — this just turns what would be a silent
+// no-op into a clear error and stops a paused user from mutating network config.
+export function blockWritesWhenPaused(req: Request, res: Response, next: NextFunction): void {
+  if (req.user?.is_paused && req.method !== 'GET' && req.method !== 'HEAD') {
+    res.status(403).json({ error: 'account paused' });
+    return;
+  }
+  next();
+}

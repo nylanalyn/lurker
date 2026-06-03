@@ -68,10 +68,38 @@ interface LurkerWebSocket extends WebSocket {
   userId?: number;
   sinceId?: number;
   presence?: { visible: boolean };
+  // Mirrors the account's is_paused at connect time, then flipped live by the
+  // user-suspended / user-resumed handlers so the read-only write guard never
+  // needs a per-message DB read. (Named accountPaused, not isPaused, to avoid
+  // colliding with the ws library's own WebSocket.isPaused.)
+  accountPaused?: boolean;
 }
 
 // Generic payload for outgoing WS messages.
 type WsPayload = Record<string, unknown>;
+
+// Inbound message types that mutate IRC state or produce outbound IRC traffic.
+// A paused account is read-only, so these are rejected while reads (snapshot,
+// history, search, chanlist-search) and local view state (read markers, pins,
+// drafts, bookmarks, nicklist collapse) still work. open-buffer can resolve to
+// a JOIN, so it's blocked; close-buffer is blocked because its disconnected
+// fallback flips channels.joined=0 — a network-state mutation a read-only
+// account shouldn't make (no PART goes out, since paused accounts hold no
+// connection, but the persisted join intent would still change).
+const PAUSED_BLOCKED_TYPES = new Set([
+  'send',
+  'action',
+  'join',
+  'open-buffer',
+  'close-buffer',
+  'part',
+  'raw',
+  'probe-presence',
+  'list-channels',
+  'away',
+  'back',
+  'typing',
+]);
 
 // Options bag for fanOut.
 interface FanOutOpts {
@@ -655,6 +683,30 @@ export function attachWsHub(httpServer: HttpServer, sessionSecret: string) {
     systemLog.dropUser(userId);
   });
 
+  // Pause: the user keeps their session and sockets — unlike a delete. Flip
+  // every open tab to read-only in place and drop the pending auto-away timer.
+  // The IrcConnections were already torn down by ircManager.suspendUser; here
+  // we only react on the socket layer.
+  ircManager.on('user-suspended', ({ userId }) => {
+    const set = socketsByUser.get(userId);
+    if (set) {
+      for (const ws of set) ws.accountPaused = true;
+    }
+    clearAutoAwayTimer(userId);
+    fanOut(userId, { kind: 'account-state', paused: true });
+  });
+
+  // Resume: clear the read-only flag on open tabs and drop the banner.
+  // ircManager.resumeUser has already re-established autoconnect networks, whose
+  // connection lifecycle events fan out through the normal snapshot/event path.
+  ircManager.on('user-resumed', ({ userId }) => {
+    const set = socketsByUser.get(userId);
+    if (set) {
+      for (const ws of set) ws.accountPaused = false;
+    }
+    fanOut(userId, { kind: 'account-state', paused: false });
+  });
+
   function authenticateRequest(req: IncomingMessage): User | null | undefined {
     const header = req.headers.cookie;
     if (!header) return null;
@@ -688,6 +740,7 @@ export function attachWsHub(httpServer: HttpServer, sessionSecret: string) {
       lurkerWs.userId = user.id;
       lurkerWs.sinceId = initialSinceId;
       lurkerWs.presence = { visible: false };
+      lurkerWs.accountPaused = user.is_paused === 1;
       addSocket(user.id, lurkerWs);
       onConnection(lurkerWs, user);
     });
@@ -832,6 +885,22 @@ export function attachWsHub(httpServer: HttpServer, sessionSecret: string) {
         return;
       }
       msg.networkId = networkId;
+    }
+    // Read-only guard for paused accounts. Reject anything that would touch IRC;
+    // reads and local view state fall through to the switch. Resolve the
+    // optimistic bubble on send/action so the originating tab stops showing it
+    // as pending instead of hanging forever.
+    if (ws.accountPaused && PAUSED_BLOCKED_TYPES.has(msg.type as string)) {
+      send(ws, { kind: 'error', text: 'account paused' });
+      if (msg.clientId && (msg.type === 'send' || msg.type === 'action')) {
+        send(ws, {
+          kind: 'send-result',
+          clientId: msg.clientId,
+          ok: false,
+          error: 'account-paused',
+        });
+      }
+      return;
     }
     switch (msg.type) {
       case 'presence': {

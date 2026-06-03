@@ -129,6 +129,39 @@ describe('POST /api/networks', () => {
   });
 });
 
+describe('paused accounts are read-only', () => {
+  it('blocks every write with 403 but still serves reads', async () => {
+    const { createUser, setUserPaused } = await import('../db/users.js');
+    const paula = createUser('net-paula');
+    const paulaAgent = await createAuthedAgent(app, paula.id);
+
+    // Create a network while still active, capture its id, then pause.
+    const net = await makeNet(paulaAgent, { name: 'paula-net' });
+    expect(net.status).toBe(201);
+    const netId = net.body.network.id;
+    setUserPaused(paula.id, true);
+    fakeManager.reset();
+
+    // Reads still work — the sidebar must render for read-only browsing.
+    const list = await paulaAgent.get('/api/networks');
+    expect(list.status).toBe(200);
+
+    // Every mutation is blocked with a clean 403, and no IRC call leaks through.
+    expect((await paulaAgent.post(`/api/networks/${netId}/connect`)).status).toBe(403);
+    expect((await paulaAgent.post(`/api/networks/${netId}/reconnect`)).status).toBe(403);
+    expect(
+      (await paulaAgent.post(`/api/networks/${netId}/join`).send({ channel: '#x' })).status,
+    ).toBe(403);
+    expect((await makeNet(paulaAgent, { name: 'should-fail' })).status).toBe(403);
+    expect(fakeManager.calls.length).toBe(0);
+
+    // Un-pausing restores write access.
+    setUserPaused(paula.id, false);
+    expect((await paulaAgent.post(`/api/networks/${netId}/connect`)).status).toBe(200);
+    expect(fakeManager.calls.some(([m]) => m === 'startNetwork')).toBe(true);
+  });
+});
+
 describe('PATCH /api/networks/:id', () => {
   it("404s on someone else's network", async () => {
     const bobNet = await makeNet(bobAgent, { name: 'bobs' });

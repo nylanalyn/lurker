@@ -12,6 +12,7 @@ import {
   deleteChannel,
 } from '../db/networks.js';
 import { reopenBuffer } from '../db/closedBuffers.js';
+import { findUserById } from '../db/users.js';
 import { getUserAwayState, writeAwayMarker, writeBackMarker } from '../db/userAwayState.js';
 import { listPinnedForUser } from '../db/pinnedBuffers.js';
 import { listCollapsedForUser } from '../db/nicklistCollapsed.js';
@@ -95,6 +96,13 @@ class IrcManager extends EventEmitter {
   }
 
   startNetwork(userId: number, networkId: number): IrcConnection | null {
+    // Paused accounts never hold a live IRC connection. This single gate is the
+    // linchpin of the pause feature: it covers boot-time autoconnect
+    // (initForUser → initAll), the explicit connect/reconnect routes, and
+    // restartNetwork — so a paused user can produce no IRC traffic no matter
+    // which path is taken. The boundary guards (REST/WS) exist only to return a
+    // clean "account paused" instead of a silent no-op.
+    if (findUserById(userId)?.is_paused) return null;
     const network = getNetwork(networkId, userId);
     if (!network) return null;
     let conn = this.getConnection(userId, networkId);
@@ -351,6 +359,45 @@ class IrcManager extends EventEmitter {
       this.byUser.delete(userId);
     }
     this.emit('user-disposed', { userId });
+  }
+
+  // Pause: tear down the user's live IRC connections but leave their WS sockets
+  // and session untouched — the opposite of disposeUser, which fires right
+  // before a row delete and closes everything. A paused user keeps read-only
+  // access; only their IRC presence goes away. Emits 'user-suspended' so wsHub
+  // can flip already-open tabs into read-only in place. Call setUserPaused(id,
+  // true) BEFORE this so the startNetwork gate won't immediately re-establish
+  // anything (e.g. an in-flight reconnect timer).
+  suspendUser(userId: number): void {
+    const userMap = this.byUser.get(userId);
+    if (userMap) {
+      for (const conn of userMap.values()) {
+        try {
+          // disconnect(), NOT dispose(): dispose() sets disposed=true before the
+          // QUIT, which makes publish() swallow the 'disconnected' state event —
+          // so the still-open client (pause keeps the WS) would keep showing the
+          // network as connected. disconnect() leaves publish() live, so the
+          // socket-close handler's setState('disconnected') reaches the client,
+          // and it quits with DEFAULT_QUIT_MESSAGE rather than a "paused" reason.
+          // (dispose()'s disposed-guard matters for deletion, where a late write
+          // would hit a FK violation; here the row stays, so it's harmless.)
+          conn.disconnect();
+        } catch (_) {
+          /* ignore */
+        }
+      }
+      this.byUser.delete(userId);
+    }
+    this.emit('user-suspended', { userId });
+  }
+
+  // Resume: re-establish autoconnect networks for an account that was just
+  // un-paused. Call AFTER setUserPaused(id, false) so the startNetwork gate
+  // lets the connections through. Emits 'user-resumed' so wsHub clears the
+  // read-only banner on open tabs.
+  resumeUser(userId: number): void {
+    this.initForUser(userId);
+    this.emit('user-resumed', { userId });
   }
 
   shutdown(): void {

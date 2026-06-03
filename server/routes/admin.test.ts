@@ -16,11 +16,23 @@ const ctx = setupTestDb('routes-admin');
 
 const fakeManager = {
   disposed: [] as Array<[number, string]>,
+  suspended: [] as number[],
+  resumed: [] as number[],
   reset() {
     this.disposed = [];
+    this.suspended = [];
+    this.resumed = [];
   },
   disposeUser(userId: number, reason: string) {
     this.disposed.push([userId, reason]);
+  },
+  // Mirrors the real ircManager.suspendUser(userId) — one arg, no reason (the
+  // QUIT uses the default message).
+  suspendUser(userId: number) {
+    this.suspended.push(userId);
+  },
+  resumeUser(userId: number) {
+    this.resumed.push(userId);
   },
 };
 vi.mock('../services/ircManager.js', () => ({ default: fakeManager }));
@@ -141,6 +153,59 @@ describe('DELETE /api/admin/users/:id', () => {
     const res = await adminAgent.delete(`/api/admin/users/${target.id}`);
     expect(res.status).toBe(200);
     expect(fakeManager.disposed.find(([uid]) => uid === target.id)).toBeTruthy();
+  });
+});
+
+describe('POST /api/admin/users/:id/pause and /resume', () => {
+  it('pauses a user: flips is_paused, suspends IRC, and surfaces it in the list', async () => {
+    const { createUser, findUserById } = await import('../db/users.js');
+    const target = createUser('to-be-paused');
+    const res = await adminAgent.post(`/api/admin/users/${target.id}/pause`);
+    expect(res.status).toBe(200);
+    expect(findUserById(target.id)?.is_paused).toBe(1);
+    expect(fakeManager.suspended).toContain(target.id);
+
+    const list = await adminAgent.get('/api/admin/users');
+    const row = list.body.users.find((u: { id: number }) => u.id === target.id);
+    expect(row.isPaused).toBe(true);
+  });
+
+  it('resumes a paused user: clears is_paused and re-inits their networks', async () => {
+    const { createUser, findUserById, setUserPaused } = await import('../db/users.js');
+    const target = createUser('to-be-resumed');
+    setUserPaused(target.id, true);
+    const res = await adminAgent.post(`/api/admin/users/${target.id}/resume`);
+    expect(res.status).toBe(200);
+    expect(findUserById(target.id)?.is_paused).toBe(0);
+    expect(fakeManager.resumed).toContain(target.id);
+  });
+
+  it('refuses to pause yourself (409)', async () => {
+    const res = await adminAgent.post(`/api/admin/users/${admin.id}/pause`);
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/yourself/);
+  });
+
+  it('404s an unknown id and 400s a non-integer id', async () => {
+    expect((await adminAgent.post('/api/admin/users/999999/pause')).status).toBe(404);
+    expect((await adminAgent.post('/api/admin/users/abc/pause')).status).toBe(400);
+  });
+
+  it('requires admin — a regular user gets 403', async () => {
+    const { createUser } = await import('../db/users.js');
+    const victim = createUser('pause-victim');
+    expect((await userAgent.post(`/api/admin/users/${victim.id}/pause`)).status).toBe(403);
+  });
+
+  it('is idempotent: re-pausing stays paused and does not re-suspend', async () => {
+    const { createUser } = await import('../db/users.js');
+    const target = createUser('pause-twice-admin');
+    await adminAgent.post(`/api/admin/users/${target.id}/pause`);
+    fakeManager.reset();
+    const again = await adminAgent.post(`/api/admin/users/${target.id}/pause`);
+    expect(again.status).toBe(200);
+    expect(again.body.alreadyPaused).toBe(true);
+    expect(fakeManager.suspended.length).toBe(0);
   });
 });
 

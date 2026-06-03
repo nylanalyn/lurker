@@ -4,9 +4,10 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { listUsers, findUserById, deleteUser, countAdmins } from '../db/users.js';
+import { listUsers, findUserById, deleteUser, countAdmins, setUserPaused } from '../db/users.js';
 import { createInvite, listInvites, deleteInvite, getInvite } from '../db/invites.js';
 import ircManager from '../services/ircManager.js';
+import { isNodeMode } from '../utils/edition.js';
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
@@ -54,6 +55,7 @@ router.get('/users', (_req: Request, res: Response) => {
       role: u.role,
       createdAt: u.created_at,
       lastSeenAt: u.last_seen_at,
+      isPaused: !!u.is_paused,
     })),
   });
 });
@@ -86,6 +88,71 @@ router.delete('/users/:id', (req: Request, res: Response) => {
   // FOREIGN KEY violation in messages.network_id.
   ircManager.disposeUser(id, 'user deleted');
   deleteUser(id);
+  res.json({ ok: true });
+});
+
+// Pause/resume another account (self-hosted moderation): drop their live IRC and
+// make them read-only, keeping all data — the same mechanism the control plane
+// drives in node edition. Gated to standalone: in node edition the CP is the
+// source of truth, and a cell-side pause would desync it (CP reconciliation
+// re-asserts pauses but never resumes), so we refuse and let the CP own it.
+router.post('/users/:id/pause', (req: Request, res: Response) => {
+  if (isNodeMode()) {
+    res
+      .status(409)
+      .json({ error: 'account state is managed by the control plane in node edition' });
+    return;
+  }
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: 'invalid id' });
+    return;
+  }
+  const target = findUserById(id);
+  if (!target) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
+  // Pausing yourself would lock you read-only with no obvious way back; the UI
+  // disables it too, but guard the route as the source of truth.
+  if (target.id === req.user!.id) {
+    res.status(409).json({ error: 'cannot pause yourself' });
+    return;
+  }
+  if (target.is_paused) {
+    res.json({ ok: true, alreadyPaused: true });
+    return;
+  }
+  // Flag first so the startNetwork gate is closed before suspendUser drops the
+  // connections (no window for an in-flight reconnect to slip back in).
+  setUserPaused(id, true);
+  ircManager.suspendUser(id);
+  res.json({ ok: true });
+});
+
+router.post('/users/:id/resume', (req: Request, res: Response) => {
+  if (isNodeMode()) {
+    res
+      .status(409)
+      .json({ error: 'account state is managed by the control plane in node edition' });
+    return;
+  }
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: 'invalid id' });
+    return;
+  }
+  const target = findUserById(id);
+  if (!target) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
+  if (!target.is_paused) {
+    res.json({ ok: true, alreadyActive: true });
+    return;
+  }
+  setUserPaused(id, false);
+  ircManager.resumeUser(id);
   res.json({ ok: true });
 });
 

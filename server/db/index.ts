@@ -493,6 +493,12 @@ ensureColumn('networks', 'connect_commands', 'TEXT');
 ensureColumn('networks', 'position', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('users', 'password_hash', 'TEXT');
 ensureColumn('users', 'last_seen_at', 'TEXT');
+// Account access state, orthogonal to role. A paused account keeps all its data
+// but is disconnected from IRC and barred from reconnecting or sending — it can
+// still browse history read-only. Set by the operator (standalone) or by the
+// control plane (node edition) when a hosted account is suspended / past-due /
+// canceled; the cell stays billing-blind and only mirrors this one verdict.
+ensureColumn('users', 'is_paused', 'INTEGER NOT NULL DEFAULT 0');
 
 // Roles: 'admin' can manage invites and other users; 'user' is everyone else.
 // On a fresh install the first user (created via /api/auth/setup) is promoted

@@ -199,3 +199,67 @@ describe('node control API — mint session', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('node control API — pause/resume', () => {
+  async function provision(username: string): Promise<number> {
+    const res = await createAnonAgent(app)
+      .post('/api/node/users')
+      .set('Authorization', AUTH)
+      .send({ username });
+    return res.body.id;
+  }
+
+  it('pauses a tenant and flips is_paused', async () => {
+    const id = await provision('pause-me');
+    expect(findUserById(id)?.is_paused).toBe(0);
+    const res = await createAnonAgent(app)
+      .post(`/api/node/users/${id}/pause`)
+      .set('Authorization', AUTH);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(findUserById(id)?.is_paused).toBe(1);
+  });
+
+  it('is idempotent — re-pausing stays paused and still 200s', async () => {
+    const id = await provision('pause-twice');
+    await createAnonAgent(app).post(`/api/node/users/${id}/pause`).set('Authorization', AUTH);
+    const again = await createAnonAgent(app)
+      .post(`/api/node/users/${id}/pause`)
+      .set('Authorization', AUTH);
+    expect(again.status).toBe(200);
+    expect(findUserById(id)?.is_paused).toBe(1);
+  });
+
+  it('resumes a paused tenant and clears is_paused', async () => {
+    const id = await provision('resume-me');
+    await createAnonAgent(app).post(`/api/node/users/${id}/pause`).set('Authorization', AUTH);
+    expect(findUserById(id)?.is_paused).toBe(1);
+    const res = await createAnonAgent(app)
+      .post(`/api/node/users/${id}/resume`)
+      .set('Authorization', AUTH);
+    expect(res.status).toBe(200);
+    expect(findUserById(id)?.is_paused).toBe(0);
+  });
+
+  it('404s pausing an unknown user', async () => {
+    const res = await createAnonAgent(app)
+      .post('/api/node/users/999999/pause')
+      .set('Authorization', AUTH);
+    expect(res.status).toBe(404);
+  });
+
+  it('refuses to pause an admin (the operator)', async () => {
+    const admin = createUser('pause-admin', { role: 'admin' });
+    const res = await createAnonAgent(app)
+      .post(`/api/node/users/${admin.id}/pause`)
+      .set('Authorization', AUTH);
+    expect(res.status).toBe(409);
+    expect(findUserById(admin.id)?.is_paused).toBe(0);
+  });
+
+  it('requires the node secret', async () => {
+    const id = await provision('pause-noauth');
+    const res = await createAnonAgent(app).post(`/api/node/users/${id}/pause`);
+    expect(res.status).toBe(401);
+  });
+});
