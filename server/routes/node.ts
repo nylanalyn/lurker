@@ -15,6 +15,7 @@ import {
   findUserByUsername,
   setUserPaused,
 } from '../db/users.js';
+import { markUploadRemovedById } from '../db/uploadHistory.js';
 import ircManager from '../services/ircManager.js';
 import { sign as signCookie } from 'cookie-signature';
 import { createSession } from '../db/sessions.js';
@@ -186,6 +187,24 @@ router.post('/users/:id/resume', (req: Request, res: Response) => {
   }
   setUserPaused(id, false);
   ircManager.resumeUser(id);
+  res.json({ ok: true });
+});
+
+// Moderation takedown: the control plane has removed an upload's object from
+// storage and tells the cell to tombstone the owner's history row (flip it to
+// `removed`, drop any inline thumbnail). `:id` is the cell's own upload_history
+// id. Idempotent; a missing row is a 404 the CP treats as success (nothing to
+// tombstone), mirroring the pause/deprovision endpoints.
+router.post('/uploads/:id/takedown', (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: 'invalid id' });
+    return;
+  }
+  if (!markUploadRemovedById(id)) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
   res.json({ ok: true });
 });
 

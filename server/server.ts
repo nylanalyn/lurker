@@ -16,6 +16,7 @@ import { backfillEncryptNetworkSecrets } from './db/networks.js';
 import { resolveSessionSecret } from './utils/sessionSecret.js';
 import { getEdition, isNodeMode } from './utils/edition.js';
 import { startOrchestratorClient, stopOrchestratorClient } from './services/orchestratorClient.js';
+import { startModerationReporter, stopModerationReporter } from './services/moderationReport.js';
 import { startIdentd, stopIdentd, isIdentdEnabled, identdPort } from './services/identd.js';
 
 const PORT = Number(process.env.PORT || 8010);
@@ -72,6 +73,10 @@ ircManager.initAll();
 // heartbeat on an interval). No-op in standalone or when unconfigured.
 startOrchestratorClient();
 
+// In node edition, periodically reconcile any upload moderation records that
+// didn't reach the control plane at upload time. No-op in standalone.
+startModerationReporter();
+
 server.listen(PORT, () => {
   console.log(`[lurker] listening on http://localhost:${PORT}`);
   systemLog.log({ scope: 'server', text: `Listening on port ${PORT}` });
@@ -81,6 +86,7 @@ function shutdown(signal: string): void {
   console.log(`[lurker] received ${signal}, shutting down`);
   systemLog.log({ scope: 'server', level: 'warn', text: `Received ${signal}, shutting down` });
   stopOrchestratorClient();
+  stopModerationReporter();
   stopIdentd();
   ircManager.shutdown();
   server.close(() => process.exit(0));

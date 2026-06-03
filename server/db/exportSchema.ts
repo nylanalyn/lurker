@@ -218,7 +218,12 @@ export const EXPORT_TABLES = Object.freeze({
   },
 
   upload_history: {
-    mode: 'export',
+    // 'partial': synced_to_cp and removed are operational/instance-local state
+    // (see skippedColumns), so they're left out of the portable contract —
+    // which also keeps imports of older archives working: both are
+    // INTEGER NOT NULL, and since they're not in the INSERT the DB default (0)
+    // applies rather than a NULL that would fail the constraint.
+    mode: 'partial',
     scope: 'user_id',
     section: 'data',
     pk: 'id',
@@ -226,6 +231,7 @@ export const EXPORT_TABLES = Object.freeze({
     fkRekey: { user_id: 'users' },
     // thumbnail BLOB is written to thumbnails/<id>.jpg in the zip rather than
     // base64-inlined; the row carries a hasThumbnail boolean in data.json.
+    // thumbnail_url (node edition) is a plain string column carried as-is.
     blobColumns: ['thumbnail'],
     columns: [
       'id',
@@ -238,8 +244,13 @@ export const EXPORT_TABLES = Object.freeze({
       'width',
       'height',
       'thumbnail',
+      'thumbnail_url',
       'created_at',
     ],
+    skippedColumns: {
+      synced_to_cp: 'operational: cell↔control-plane moderation-sync bookkeeping, not portable',
+      removed: 'instance/CP-owned moderation state; a fresh instance starts it at the default 0',
+    },
   },
 
   pinned_buffers: {

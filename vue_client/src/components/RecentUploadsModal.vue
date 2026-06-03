@@ -9,8 +9,14 @@
 
     <div ref="listEl" class="list-wrap" @scroll="onScroll">
       <ul v-if="recentRows.length" class="list">
-        <li v-for="u in recentRows" :key="u.id" class="row">
+        <li v-for="u in recentRows" :key="u.id" class="row" :class="{ removed: u.removed }">
+          <!-- Moderated-away upload: the object is gone, so show a tombstone
+               instead of a link to a dead URL. -->
+          <div v-if="u.removed" class="thumb thumb-placeholder" title="removed by moderation">
+            <i class="fa-solid fa-gavel fa-2x"></i>
+          </div>
           <a
+            v-else
             :href="u.url"
             target="_blank"
             rel="noreferrer noopener"
@@ -30,7 +36,8 @@
           </a>
           <div class="meta">
             <div class="filename" :title="u.filename || ''">{{ u.filename || '(pasted)' }}</div>
-            <div class="url" :title="u.url">{{ u.url }}</div>
+            <div v-if="u.removed" class="url removed-note">Removed by moderation</div>
+            <div v-else class="url" :title="u.url">{{ u.url }}</div>
             <div class="sub">
               <span v-if="u.provider">{{ u.provider }}</span>
               <span v-if="u.created_at">· {{ formatRelative(u.created_at) }}</span>
@@ -39,14 +46,19 @@
             </div>
           </div>
           <div class="row-actions">
-            <button class="link" @click="onInsert(u)" title="insert URL into input">insert</button>
-            <button
-              class="link"
-              @click="onCopy(u)"
-              :title="copiedId === u.id ? 'copied' : 'copy URL'"
-            >
-              {{ copiedId === u.id ? 'copied' : 'copy' }}
-            </button>
+            <!-- A removed upload's URL is dead — only allow clearing it from history. -->
+            <template v-if="!u.removed">
+              <button class="link" @click="onInsert(u)" title="insert URL into input">
+                insert
+              </button>
+              <button
+                class="link"
+                @click="onCopy(u)"
+                :title="copiedId === u.id ? 'copied' : 'copy URL'"
+              >
+                {{ copiedId === u.id ? 'copied' : 'copy' }}
+              </button>
+            </template>
             <button
               class="link danger"
               @click="onDelete(u)"
@@ -218,6 +230,12 @@ function formatBytes(n: number) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.removed-note {
+  color: var(--bad);
+}
+.row.removed .filename {
+  color: var(--fg-muted);
 }
 .sub {
   color: var(--fg-muted);

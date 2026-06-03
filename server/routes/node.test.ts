@@ -263,3 +263,62 @@ describe('node control API — pause/resume', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('node control API — upload takedown', () => {
+  it('flips an upload to removed and drops its inline thumbnail', async () => {
+    const { insertUpload, listUploads, getThumbnail } = await import('../db/uploadHistory.js');
+    const user = createUser('takedown-owner');
+    const uploadId = insertUpload(user.id, {
+      provider: 'hoarder',
+      url: 'https://cdn.test/x.jpg',
+      filename: 'x.png',
+      mime: 'image/jpeg',
+      byte_size: 100,
+      width: 10,
+      height: 10,
+      thumbnail: Buffer.from([1, 2, 3]),
+    });
+
+    const res = await createAnonAgent(app)
+      .post(`/api/node/uploads/${uploadId}/takedown`)
+      .set('Authorization', AUTH);
+    expect(res.status).toBe(200);
+
+    const row = listUploads(user.id).find((r) => r.id === uploadId)!;
+    expect(row.removed).toBe(1);
+    // Bytes gone: the inline thumbnail BLOB was cleared.
+    expect(getThumbnail(user.id, uploadId)?.thumbnail).toBeNull();
+  });
+
+  it('is idempotent — re-takedown still 200', async () => {
+    const { insertUpload } = await import('../db/uploadHistory.js');
+    const user = createUser('takedown-twice');
+    const uploadId = insertUpload(user.id, {
+      provider: 'hoarder',
+      url: 'https://cdn.test/y.jpg',
+      mime: 'image/jpeg',
+      byte_size: 1,
+      thumbnail: null,
+    });
+    const first = await createAnonAgent(app)
+      .post(`/api/node/uploads/${uploadId}/takedown`)
+      .set('Authorization', AUTH);
+    const second = await createAnonAgent(app)
+      .post(`/api/node/uploads/${uploadId}/takedown`)
+      .set('Authorization', AUTH);
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+  });
+
+  it('404 for an unknown upload id', async () => {
+    const res = await createAnonAgent(app)
+      .post('/api/node/uploads/999999/takedown')
+      .set('Authorization', AUTH);
+    expect(res.status).toBe(404);
+  });
+
+  it('requires the node secret', async () => {
+    const res = await createAnonAgent(app).post('/api/node/uploads/1/takedown');
+    expect(res.status).toBe(401);
+  });
+});
