@@ -674,6 +674,18 @@ onBeforeUnmount(() => {
   border-left-color: var(--accent);
 }
 
+/* Auto-scroll look-ahead (#182): ensureActiveVisible() uses
+   scrollIntoView({ block: 'nearest' }), which by default slams the selected
+   row flush against the viewport edge — so Alt+arrow nav into an off-screen
+   buffer reveals nothing about what's coming. scroll-margin expands each row's
+   box, so 'nearest' leaves this much breathing room on the leading edge while
+   still no-op'ing for rows already comfortably in view. Rows are
+   intrinsic-height (no fixed row token); 72px ≈ 3 rows of look-ahead. */
+.net-head,
+.channels li {
+  scroll-margin-block: 72px;
+}
+
 /* Hover action buttons on network rows — mirrors .channels .row-actions pattern. */
 .net-actions {
   position: absolute;
