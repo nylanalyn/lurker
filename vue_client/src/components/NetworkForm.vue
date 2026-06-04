@@ -155,9 +155,7 @@ const form = reactive({
 // forces the section open.
 const showAdvanced = ref(
   !!props.network &&
-    (!!netRaw?.has_password ||
-      !!netRaw?.connect_commands ||
-      netRaw?.autoconnect === false),
+    (!!netRaw?.has_password || !!netRaw?.connect_commands || netRaw?.autoconnect === false),
 );
 
 const loading = ref(false);
