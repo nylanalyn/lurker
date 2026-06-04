@@ -778,6 +778,19 @@ export const REGISTRY: readonly SettingOption[] = Object.freeze([
       'the JOIN line is revealed. 0 disables unmasking.',
   },
 
+  // ─── Inline image viewer ──────────────────────────────────────────────
+  {
+    key: 'chat.image_modal.enabled',
+    label: 'Image viewer',
+    category: 'chat',
+    group: 'viewing',
+    type: 'bool',
+    default: false,
+    description:
+      'When enabled, clicking a URL to an image opens it in an in-app viewer instead ' +
+      'of a new browser tab. Cmd/Ctrl-click always opens in a new tab.',
+  },
+
   // ─── Auto-away (sets you AWAY when no client is connected) ────────────
   {
     key: 'away.auto.enabled',
@@ -887,17 +900,6 @@ export const REGISTRY: readonly SettingOption[] = Object.freeze([
     description:
       'When enabled, pasting an image into the input area uploads it and ' +
       'inserts the resulting URL. Disable to fall back to plain text paste.',
-  },
-  {
-    key: 'uploads.image_modal.enabled',
-    label: 'Image viewer',
-    category: 'uploads',
-    group: 'viewing',
-    type: 'bool',
-    default: false,
-    description:
-      'When enabled, clicking a URL to an image opens it in an in-app viewer instead ' +
-      'of a new browser tab. Cmd/Ctrl-click always opens in a new tab.',
   },
   {
     key: 'uploads.catbox.userhash',

@@ -87,7 +87,7 @@ function hasStyle(seg: RenderSegment): boolean {
 }
 
 function isModalImageUrl(url: string): boolean {
-  if (settings.effective('uploads.image_modal.enabled') !== true) return false;
+  if (settings.effective('chat.image_modal.enabled') !== true) return false;
 
   return isImageUrl(url);
 }
