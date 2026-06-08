@@ -15,6 +15,16 @@
       </button>
     </template>
 
+    <div class="search-row">
+      <input
+        v-model="queryInput"
+        class="filter"
+        type="text"
+        placeholder="filter highlights — from:nick in:#channel on:network"
+        autocomplete="off"
+        spellcheck="false"
+      />
+    </div>
     <p v-if="store.error" class="error inline">{{ store.error }}</p>
     <ul v-if="visibleItems.length" ref="listEl" class="match-list" @scroll="onScroll">
       <HistoryMessageRow
@@ -27,12 +37,13 @@
     </ul>
     <p v-else-if="store.loading" class="empty">Loading…</p>
     <p v-else-if="store.items.length" class="empty">All highlights are from ignored users.</p>
+    <p v-else-if="hasFilter" class="empty">No highlights match your filter.</p>
     <p v-else class="empty">No highlights yet.</p>
   </AppModal>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import AppModal from './AppModal.vue';
 import HistoryMessageRow, { type HistoryMessage } from './HistoryMessageRow.vue';
 import { useSettingsStore } from '../stores/settings.js';
@@ -54,6 +65,33 @@ const visibleItems = computed(() =>
   store.items.filter((m) => !ignores.isIgnored(m.networkId, m.nick, m.userhost ?? '')),
 );
 
+const hasFilter = computed(() => store.query.trim().length > 0);
+
+// If the entire loaded page is from ignored users the scroll container is not
+// rendered, so the user can't trigger pagination themselves — quietly fetch
+// the next page in their stead. Capped so a single very prolific ignored
+// source can't drag the modal into an unbounded fetch loop; reset whenever the
+// filter changes so a fresh result set gets its own budget.
+const AUTO_FILL_MAX_PAGES = 5;
+let autoFillFetched = 0;
+
+// Local mirror of the store's raw filter so we can debounce the reload without
+// debouncing the text field itself. Seeded from the store so a closed-then-
+// reopened modal keeps the active filter.
+const queryInput = ref(store.query);
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+watch(queryInput, (val) => {
+  store.setQuery(val);
+  autoFillFetched = 0; // New filter — let auto-fill work again.
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    store.loadInitial();
+  }, 200);
+});
+onBeforeUnmount(() => {
+  if (debounceTimer) clearTimeout(debounceTimer);
+});
+
 function onScroll(): void {
   const el = listEl.value;
   if (!el) return;
@@ -62,12 +100,6 @@ function onScroll(): void {
   }
 }
 
-// If the entire loaded page is from ignored users the scroll container is not
-// rendered, so the user can't trigger pagination themselves — quietly fetch
-// the next page in their stead. Capped so a single very prolific ignored
-// source can't drag the modal into an unbounded fetch loop.
-const AUTO_FILL_MAX_PAGES = 5;
-let autoFillFetched = 0;
 watch(
   () => [visibleItems.value.length, store.loading, store.hasMore] as const,
   ([visible, loading, hasMore]) => {
@@ -118,6 +150,22 @@ function onJump(m: HistoryMessage): void {
   /* Icon-only button — size the glyph (fa-solid is already weight 900, so
      font-weight here would be a no-op). */
   font-size: var(--icon-md);
+}
+
+.search-row {
+  margin-bottom: var(--space-6);
+}
+.filter {
+  width: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  padding: var(--space-4) var(--space-5);
+  font: inherit;
+}
+.filter:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 .match-list {

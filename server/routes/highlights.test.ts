@@ -20,10 +20,11 @@ let agent: LurkerTestAgent;
 let user: User;
 let net: Network;
 let insertMessage: typeof import('../db/messages.js').insertMessage;
+let createNetwork: typeof import('../db/networks.js').createNetwork;
 
 beforeAll(async () => {
   const { createUser } = await import('../db/users.js');
-  const { createNetwork } = await import('../db/networks.js');
+  ({ createNetwork } = await import('../db/networks.js'));
   ({ insertMessage } = await import('../db/messages.js'));
   const router = (await import('./highlights.js')).default;
 
@@ -117,5 +118,53 @@ describe('GET /api/highlights', () => {
     const ids = res.body.items.map((r: { id: number }) => r.id);
     expect(ids).toContain(visible);
     expect(ids).not.toContain(hidden);
+  });
+
+  it('filters by nick (from:)', async () => {
+    chat('#fromf', 'zara', 'alice ping', 50);
+    chat('#fromf', 'yann', 'alice ping', 50);
+    const res = await agent.get('/api/highlights?nick=ZARA');
+    expect(res.status).toBe(200);
+    expect(res.body.items.map((r: { nick: string }) => r.nick)).toEqual(['zara']);
+  });
+
+  it('filters by target (in:)', async () => {
+    chat('#in-a', 'mara', 'alice ping', 51);
+    chat('#in-b', 'mara', 'alice ping', 51);
+    const res = await agent.get('/api/highlights?target=%23in-a');
+    expect(res.status).toBe(200);
+    expect(res.body.items.map((r: { target: string }) => r.target)).toEqual(['#in-a']);
+  });
+
+  it('filters by free text (q) over the FTS index', async () => {
+    chat('#qf', 'nina', 'needlexyz spotted', 52);
+    chat('#qf', 'nina', 'haystack only here', 52);
+    const res = await agent.get('/api/highlights?q=needlexyz');
+    expect(res.status).toBe(200);
+    expect(res.body.items.map((r: { text: string }) => r.text)).toEqual(['needlexyz spotted']);
+  });
+
+  it('filters by networkId (on:)', async () => {
+    const net2 = createNetwork(user.id, {
+      name: 'oftc',
+      host: 'h',
+      port: 6697,
+      tls: true,
+      nick: 'alice',
+    })!;
+    insertMessage({
+      networkId: net2.id,
+      target: '#onf',
+      time: new Date().toISOString(),
+      type: 'message',
+      nick: 'pat',
+      text: 'alice ping',
+      self: false,
+      matchedRuleId: 53,
+    });
+    const res = await agent.get(`/api/highlights?networkId=${net2.id}`);
+    expect(res.status).toBe(200);
+    expect(res.body.items.every((r: { networkId: number }) => r.networkId === net2.id)).toBe(true);
+    expect(res.body.items).toHaveLength(1);
   });
 });
