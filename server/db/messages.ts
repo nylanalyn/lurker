@@ -399,6 +399,11 @@ function toFtsMatch(text: string): string {
 // via the insert-time from_ignored stamp (same as listUserHighlights / the
 // unread counts) so an ignored user stays ignored everywhere, including for
 // non-UI consumers of the search verb that have no client-side ignore filter.
+//
+// `matched: true` restricts to highlight rows (matched_rule_id IS NOT NULL) —
+// this is what powers filterable highlights, which reuse the same from:/in:/on:
+// + free-text machinery as search. Unlike plain search, an all-empty filter set
+// is valid when `matched` is set: it means "all my highlights".
 export function searchMessages(
   userId: number,
   {
@@ -406,6 +411,7 @@ export function searchMessages(
     networkId,
     target,
     nick,
+    matched,
     before,
     limit = 50,
   }: {
@@ -413,13 +419,15 @@ export function searchMessages(
     networkId?: number;
     target?: string;
     nick?: string;
+    matched?: boolean;
     before?: number;
     limit?: number;
   } = {},
 ): MessageEventWithNetwork[] {
   const text = typeof query === 'string' ? query.trim() : '';
-  // Nothing to search on — no free text and no structured filter.
-  if (!text && !networkId && !target && !nick) return [];
+  // Nothing to search on — no free text and no structured filter. With
+  // `matched` the empty case is meaningful ("all my highlights"), so skip it.
+  if (!text && !networkId && !target && !nick && !matched) return [];
 
   let from = 'messages m JOIN networks n ON n.id = m.network_id';
   const where: string[] = [
@@ -428,6 +436,12 @@ export function searchMessages(
     'm.from_ignored = 0',
   ];
   const params: (string | number)[] = [userId];
+
+  // Placed before the FTS join so the partial idx_messages_matched index
+  // (WHERE matched_rule_id IS NOT NULL) is available to the planner.
+  if (matched) {
+    where.push('m.matched_rule_id IS NOT NULL');
+  }
 
   if (text) {
     const match = toFtsMatch(text);

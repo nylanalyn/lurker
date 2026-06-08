@@ -383,6 +383,60 @@ describe('searchMessages', () => {
   });
 });
 
+describe('searchMessages matched (highlights)', () => {
+  function hl(networkId: number, nick: string, text: string, matched: number | null) {
+    return insertMessage({
+      networkId,
+      target: '#hl',
+      time: new Date().toISOString(),
+      type: 'message',
+      nick,
+      text,
+      self: false,
+      matchedRuleId: matched,
+    });
+  }
+
+  it('returns only matched rows, and all of them with no other filter', () => {
+    const user = createUser('hl-matched');
+    const net = createNetwork(user.id, {
+      name: 'n',
+      host: 'h',
+      port: 6697,
+      tls: true,
+      nick: 'hl-matched',
+    })!;
+    hl(net.id, 'alice', 'a highlight', 7);
+    hl(net.id, 'bob', 'not a highlight', null);
+    hl(net.id, 'carol', 'another highlight', 9);
+
+    const hits = searchMessages(user.id, { matched: true });
+    expect(hits.map((m) => m.nick).toSorted()).toEqual(['alice', 'carol']);
+  });
+
+  it('combines matched with free text and from:/in: filters', () => {
+    const user = createUser('hl-matched-filter');
+    const net = createNetwork(user.id, {
+      name: 'n',
+      host: 'h',
+      port: 6697,
+      tls: true,
+      nick: 'hl-matched-filter',
+    })!;
+    hl(net.id, 'alice', 'deploy finished', 7);
+    hl(net.id, 'bob', 'deploy finished', 7);
+    hl(net.id, 'alice', 'lunch plans', 7);
+
+    expect(searchMessages(user.id, { matched: true, nick: 'alice' }).map((m) => m.text)).toEqual([
+      'lunch plans',
+      'deploy finished',
+    ]);
+    expect(
+      searchMessages(user.id, { matched: true, query: 'deploy', nick: 'alice' }).map((m) => m.text),
+    ).toEqual(['deploy finished']);
+  });
+});
+
 describe('listMessagesAround', () => {
   it('centers a slice on the anchor with hasMore=false when total fits in halfLimit', () => {
     const user = createUser('around-fits');
