@@ -1,9 +1,7 @@
 // Copyright (c) 2026 Brad Root
 // SPDX-License-Identifier: MPL-2.0
 
-import type { ContextMenuItem } from './useContextMenu.js';
 import { useBookmarksStore } from '../stores/bookmarks.js';
-import { useContextMenu } from './useContextMenu.js';
 
 export interface MessageLike {
   id?: number | null;
@@ -17,104 +15,94 @@ export interface MessageLike {
 
 export interface MessageContext {
   networkId: number;
+  onReply(message: MessageLike): void;
   onIgnore(message: MessageLike): void;
 }
 
-export interface MessageActionsAPI {
-  buildItems(
-    message: MessageLike | null | undefined,
-    ctx: MessageContext | null | undefined,
-  ): ContextMenuItem[];
-  openMenuFor(
-    message: MessageLike | null | undefined,
-    ctx: MessageContext | null | undefined,
-    x: number,
-    y: number,
-  ): void;
-  openMenuFromButton(
-    message: MessageLike | null | undefined,
-    ctx: MessageContext | null | undefined,
-    buttonEl: Element | null,
-  ): void;
+export type MessageActionKey = 'reply' | 'copy' | 'save' | 'ignore';
+
+export interface MessageAction {
+  key: MessageActionKey;
+  // Tooltip + accessible label for the icon button.
+  label: string;
+  // Font Awesome classes for the button glyph.
+  icon: string;
+  // Toggles the "lit" treatment — currently only the bookmark when saved.
+  active?: boolean;
 }
 
-// Shared per-message context menu actions. Right-click, mobile long-press, and
-// the hover three-dots affordance all surface the same items. The caller owns
-// component-local UI for the ignore confirmation (mirrors useMemberActions)
-// and passes it in via `context.onIgnore(message)`.
+export interface MessageActionsAPI {
+  buildActions(message: MessageLike | null | undefined): MessageAction[];
+  run(key: MessageActionKey, message: MessageLike, ctx: MessageContext): void;
+}
+
+// Single source of truth for the per-message actions rendered as the hover
+// action bar in MessageList (issue #117 — replaced the kebab + context menu).
+//
+// buildActions() returns plain descriptors (no per-row handler closures) so
+// the bar — re-evaluated for up to MAX_PER_BUFFER rows on every render — stays
+// allocation-light; clicks are dispatched through run() with a context the
+// caller builds once. The caller owns the component-local UI for the ignore
+// confirmation (mirrors useMemberActions) and the reply hand-off to the
+// composer, supplying both via that context.
 //
 // `message` shape: { id, nick, text, self, userhost, network_id|networkId, ... }
-// `context` shape: { networkId, onIgnore(message) }
+// `context` shape: { networkId, onReply(message), onIgnore(message) }
 export function useMessageActions(): MessageActionsAPI {
   const bookmarks = useBookmarksStore();
-  const menu = useContextMenu();
 
-  function buildItems(
-    message: MessageLike | null | undefined,
-    ctx: MessageContext | null | undefined,
-  ): ContextMenuItem[] {
-    if (!message || !ctx) return [];
-    const items: ContextMenuItem[] = [];
+  function buildActions(message: MessageLike | null | undefined): MessageAction[] {
+    if (!message) return [];
+    const actions: MessageAction[] = [];
 
-    if (message.text) {
-      items.push({
-        label: 'Copy text',
-        icon: 'fa-regular fa-copy',
-        onClick: () => {
-          if (!navigator.clipboard) return;
-          navigator.clipboard.writeText(String(message.text || '')).catch(() => {});
-        },
-      });
+    // Reply and Ignore both address another user: pointless on your own line,
+    // and the server uses the hostmask for delivery, not ignore filtering.
+    const addressable = !message.self && !!message.nick;
+
+    if (addressable) {
+      actions.push({ key: 'reply', label: `Reply to ${message.nick}`, icon: 'fa-solid fa-reply' });
     }
 
-    // Ignoring your own messages doesn't make sense; the server uses the
-    // user's hostmask for delivery, not ignore filtering.
-    if (!message.self && message.nick) {
-      items.push({
-        label: `Ignore ${message.nick}…`,
-        icon: 'fa-solid fa-ban',
-        onClick: () => ctx.onIgnore(message),
-      });
+    if (message.text) {
+      actions.push({ key: 'copy', label: 'Copy text', icon: 'fa-regular fa-copy' });
     }
 
     // Bookmarks are only meaningful for messages with a stable server id.
-    // Locally-echoed rows that haven't been persisted yet (rare) get a
-    // disabled placeholder so the menu shape stays predictable.
     if (message.id != null) {
       const saved = bookmarks.isSaved(message.id);
-      items.push({ divider: true });
-      items.push({
+      actions.push({
+        key: 'save',
         label: saved ? 'Remove bookmark' : 'Save message',
         icon: saved ? 'fa-solid fa-bookmark' : 'fa-regular fa-bookmark',
-        onClick: () => bookmarks.toggle(message),
+        active: saved,
       });
     }
 
-    return items;
+    if (addressable) {
+      actions.push({ key: 'ignore', label: `Ignore ${message.nick}…`, icon: 'fa-solid fa-ban' });
+    }
+
+    return actions;
   }
 
-  function openMenuFor(
-    message: MessageLike | null | undefined,
-    ctx: MessageContext | null | undefined,
-    x: number,
-    y: number,
-  ): void {
-    const items = buildItems(message, ctx);
-    if (items.length === 0) return;
-    menu.open(items, x, y);
+  function run(key: MessageActionKey, message: MessageLike, ctx: MessageContext): void {
+    switch (key) {
+      case 'reply':
+        ctx.onReply(message);
+        break;
+      case 'copy':
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(String(message.text || '')).catch(() => {});
+        }
+        break;
+      case 'save':
+        bookmarks.toggle(message);
+        break;
+      case 'ignore':
+        ctx.onIgnore(message);
+        break;
+    }
   }
 
-  function openMenuFromButton(
-    message: MessageLike | null | undefined,
-    ctx: MessageContext | null | undefined,
-    buttonEl: Element | null,
-  ): void {
-    if (!buttonEl) return;
-    const items = buildItems(message, ctx);
-    if (items.length === 0) return;
-    const rect = buttonEl.getBoundingClientRect();
-    menu.open(items, rect.left, rect.bottom + 2, buttonEl);
-  }
-
-  return { buildItems, openMenuFor, openMenuFromButton };
+  return { buildActions, run };
 }
