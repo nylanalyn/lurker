@@ -303,9 +303,14 @@ export function buildBufferBacklog(userId: number, networkId: number, target: st
 // connection exists — which a paused user can never establish. Reuses
 // buildBufferBacklog, which reads purely from the DB and reports joined:false
 // when no connection is tracking the channel.
-export function buildOfflineBacklogFrames(userId: number): WsPayload[] {
+// `closed` defaults to a fresh query so standalone callers (tests) stay simple;
+// sendSnapshot passes the Set it already computed for the live loop to avoid a
+// redundant DB read per snapshot.
+export function buildOfflineBacklogFrames(
+  userId: number,
+  closed: Set<string> = closedKeySetForUser(userId),
+): WsPayload[] {
   const liveIds = new Set(ircManager.listConnections(userId).map((c) => c.network.id));
-  const closed = closedKeySetForUser(userId);
   const frames: WsPayload[] = [];
   for (const net of listNetworksForUser(userId)) {
     if (liveIds.has(net.id)) continue;
@@ -886,7 +891,7 @@ export function attachWsHub(httpServer: HttpServer, sessionSecret: string) {
     // Offline networks (no live connection) still ship their persisted buffers
     // so a paused/disconnected user can read history. Frames carry joined:false
     // and the client dims them via the network's disconnected snapshot state.
-    for (const frame of buildOfflineBacklogFrames(userId)) {
+    for (const frame of buildOfflineBacklogFrames(userId, closed)) {
       for (const e of frame.events as Array<{ id?: number | null }>) {
         if (e.id != null && e.id > maxSentId) maxSentId = e.id;
       }
