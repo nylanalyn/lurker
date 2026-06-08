@@ -159,7 +159,7 @@
             :class="{ active: a.active }"
             :title="a.label"
             :aria-label="a.label"
-            @click.stop="a.onClick()"
+            @click.stop="runAction(a.key, row.m)"
             @contextmenu.stop.prevent
           >
             <i :class="a.icon"></i>
@@ -211,7 +211,11 @@ import LinkedText from './LinkedText.vue';
 import RenderSegments from './RenderSegments.vue';
 import IgnoreModal from './IgnoreModal.vue';
 import { useMessageActions } from '../composables/useMessageActions.js';
-import type { MessageContext, MessageAction } from '../composables/useMessageActions.js';
+import type {
+  MessageContext,
+  MessageAction,
+  MessageActionKey,
+} from '../composables/useMessageActions.js';
 import { addressNick } from '../composables/useComposerOverlay.js';
 import { setViewedBuffer } from '../composables/useViewedBuffer.js';
 
@@ -416,28 +420,37 @@ function parseUserHost(userhost: string | null | undefined): {
   return { user: rest.slice(0, at) || null, host: rest.slice(at + 1) || null };
 }
 
-function actionContext(m: ChatMessage): MessageContext {
-  return {
-    networkId: buffer.value?.networkId ?? 0,
-    onReply: (msg) => {
-      if (msg.nick) addressNick(msg.nick);
-    },
-    onIgnore: (msg) => {
-      const { user, host } = parseUserHost(msg.userhost);
-      ignoreTarget.value = {
-        nick: msg.nick,
-        user,
-        host,
-        networkId: buffer.value?.networkId,
-      };
-    },
-  };
-}
+// One stable context for every row — the handlers read `buffer.value` at call
+// time, so there's no need to rebuild it per message (the bar re-evaluates for
+// up to 500 rows on each render). `run()` is handed this on click.
+const actionContext: MessageContext = {
+  get networkId() {
+    return buffer.value?.networkId ?? 0;
+  },
+  onReply: (msg) => {
+    if (msg.nick) addressNick(msg.nick);
+  },
+  onIgnore: (msg) => {
+    const { user, host } = parseUserHost(msg.userhost);
+    ignoreTarget.value = {
+      nick: msg.nick,
+      user,
+      host,
+      networkId: buffer.value?.networkId,
+    };
+  },
+};
 
 function actionsFor(m: ChatMessage | undefined | null): MessageAction[] {
   if (!m) return [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return messageActions.buildActions(m as any, actionContext(m));
+  return messageActions.buildActions(m as any);
+}
+
+function runAction(key: MessageActionKey, m: ChatMessage | undefined | null): void {
+  if (!m) return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  messageActions.run(key, m as any, actionContext);
 }
 
 const smartFilterEnabled = computed(() => !!settings.effective('chat.smart_filter'));

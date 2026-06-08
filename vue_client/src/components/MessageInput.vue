@@ -1159,6 +1159,12 @@ function onStripSelect(nick: string): void {
 // so iOS raises the keyboard from the originating tap.
 function addressInComposer(nick: string): void {
   if (!active.value || !nick) return;
+  // A Reply click bypasses the keystroke handlers that normally clear these,
+  // and setInputAndCaretEnd suppresses onInput (its `cycling` guard) — so clear
+  // them here or a stale Tab-completion / Up-Down history walk would act on the
+  // old text afterward. Same reset onHistorySelect does for the same reason.
+  resetCompletion();
+  resetHistoryNav();
   const prefix = `${nick}: `;
   const cur = text.value;
   const next = cur.startsWith(prefix) ? cur : cur ? `${prefix}${cur}` : prefix;
