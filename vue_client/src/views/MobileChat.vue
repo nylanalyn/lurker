@@ -358,7 +358,7 @@ function closeNetworkForm() {
 watch(activeKey, (next) => {
   if (next && (screen.value === 'list' || screen.value === 'members')) {
     screen.value = 'buffer';
-  } else if (!next && screen.value !== 'list') {
+  } else if (next === null && screen.value !== 'list') {
     // The active buffer went away (closed it, or its network was removed) while
     // we were viewing it — activeKey only nulls in those "no buffer" cases, so
     // fall back to the list instead of stranding the user on an empty buffer or
