@@ -43,31 +43,37 @@
         <span>Real name (optional)</span>
         <input v-model="form.realname" />
       </label>
-      <p v-if="showSaslHint" class="sasl-hint">
-        <strong>{{ picked?.name }}</strong> usually requires SASL auth when connecting from a
-        hosted server. Enter your account name and password below.
+      <template v-if="showSasl">
+        <p v-if="showSaslHint" class="sasl-hint">
+          <strong>{{ picked?.name }}</strong> usually requires SASL auth when connecting from a
+          hosted server. Enter your account name and password below.
+        </p>
+        <div class="row">
+          <label class="grow">
+            <span>SASL account{{ saslRequired ? '' : ' (optional)' }}</span>
+            <input
+              v-model="form.sasl_account"
+              :placeholder="form.nick || 'defaults to nick'"
+              autocomplete="off"
+            />
+          </label>
+          <label class="grow">
+            <span>SASL password{{ saslRequired ? '' : ' (optional)' }}</span>
+            <input
+              v-model="form.sasl_password"
+              type="password"
+              autocomplete="off"
+              :placeholder="
+                isEdit && props.network?.has_sasl_password ? '(saved — type to replace)' : ''
+              "
+            />
+          </label>
+        </div>
+      </template>
+      <p v-else class="sasl-hint muted">
+        <strong>{{ picked?.name }}</strong> doesn’t use SASL — leave authentication blank (set a
+        server password under advanced options if the network needs one).
       </p>
-      <div class="row">
-        <label class="grow">
-          <span>SASL account (optional)</span>
-          <input
-            v-model="form.sasl_account"
-            :placeholder="form.nick || 'defaults to nick'"
-            autocomplete="off"
-          />
-        </label>
-        <label class="grow">
-          <span>SASL password (optional)</span>
-          <input
-            v-model="form.sasl_password"
-            type="password"
-            autocomplete="off"
-            :placeholder="
-              isEdit && props.network?.has_sasl_password ? '(saved — type to replace)' : ''
-            "
-          />
-        </label>
-      </div>
       <button type="button" class="advanced-toggle" @click="showAdvanced = !showAdvanced">
         {{ showAdvanced ? '− Advanced options' : '+ Advanced options' }}
       </button>
@@ -191,12 +197,21 @@ function onManual(): void {
   step.value = 'form';
 }
 
+// Hide the SASL fields entirely when a picked network doesn't support SASL
+// (e.g. EFnet, Undernet) — entering SASL there is pointless. Manual entry and
+// editing (no `picked`) always show them, since we can't know the network.
+const showSasl = computed(() => !picked.value || picked.value.saslSupported);
+
 // Node (hosted-cell) clients connect from a datacenter IP, where some networks
 // (e.g. Libera) refuse unauthenticated connections — nudge the user to fill in
 // SASL. Self-hosted (standalone) connections don't hit this, so it's node-only.
 const showSaslHint = computed(
   () => step.value === 'form' && config.isNode && !!picked.value?.saslLikelyRequired,
 );
+
+// When SASL is effectively required (a hosted cell on a network that blocks
+// unauthenticated cloud IPs), drop the "(optional)" qualifier on the labels.
+const saslRequired = computed(() => showSaslHint.value);
 
 const loading = ref(false);
 const error = ref<string | null>(null);
@@ -328,6 +343,11 @@ label small {
   color: var(--fg-muted);
   border-left: 2px solid var(--accent);
   padding-left: var(--space-3);
+}
+/* Informational (network doesn't use SASL), not an action prompt — a neutral
+   rule rather than the accent one. */
+.sasl-hint.muted {
+  border-left-color: var(--border);
 }
 .sasl-hint strong {
   color: var(--fg);

@@ -38,13 +38,13 @@
 
     <ul class="list">
       <li v-for="net in filtered" :key="net.name" class="net-card">
-        <button type="button" class="net-row" @click="$emit('select', net)">
-          <span class="net-head">
-            <span class="net-name">{{ net.name }}</span>
-            <span v-if="net.tags.length" class="net-tags">
-              <span v-for="tag in net.tags" :key="tag" class="net-tag">{{ tag }}</span>
-            </span>
+        <div class="net-head">
+          <span class="net-name">{{ net.name }}</span>
+          <span v-if="net.tags.length" class="net-tags">
+            <span v-for="tag in net.tags" :key="tag" class="net-tag">{{ tag }}</span>
           </span>
+        </div>
+        <div class="net-meta">
           <span class="net-stats">
             <span
               v-if="net.users != null"
@@ -61,17 +61,20 @@
               <i class="fa-solid fa-hashtag"></i> {{ formatCount(net.channels) }}
             </span>
           </span>
+          <a
+            v-if="net.website"
+            class="net-site"
+            :href="net.website"
+            target="_blank"
+            rel="noopener noreferrer"
+            :title="`Visit the ${net.name} website (opens in a new tab)`"
+          >
+            {{ siteLabel(net.website) }} <i class="fa-solid fa-arrow-up-right-from-square"></i>
+          </a>
+        </div>
+        <button type="button" class="choose" @click="$emit('select', net)">
+          Choose {{ net.name }}
         </button>
-        <a
-          v-if="net.website"
-          class="net-site"
-          :href="net.website"
-          target="_blank"
-          rel="noopener noreferrer"
-          :title="`Visit the ${net.name} website (opens in a new tab)`"
-        >
-          {{ siteLabel(net.website) }} <i class="fa-solid fa-arrow-up-right-from-square"></i>
-        </a>
       </li>
       <li v-if="!filtered.length" class="none">No networks match.</li>
     </ul>
@@ -181,40 +184,42 @@ const filtered = computed<BuiltinNetwork[]>(() => {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--space-2);
 }
-/* The card owns the chrome (padding, hover, border) so the select-button and
-   the website link can be siblings inside it — an <a> can't live in a <button>. */
+/* The card is a plain info container; the only interactive elements are the
+   explicit "Choose" button and the website link (no whole-card click target). */
 .net-card {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-  border: 1px solid transparent;
+  gap: var(--space-2);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: var(--space-3);
 }
-.net-card:hover {
-  background: var(--bg-soft);
-  border-color: var(--border);
-}
-.net-row {
+/* Stats (left) + website (right) share one line under the name. */
+.net-meta {
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--space-1);
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.choose {
   width: 100%;
-  text-align: left;
+  margin-top: var(--space-1);
   background: transparent;
-  border: 0;
-  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  padding: var(--space-2);
   cursor: pointer;
 }
-/* Neutralise the global button:hover wash so only the card paints. */
-.net-row:hover {
-  background: transparent;
+.choose:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
 }
 .net-site {
-  align-self: flex-start;
   color: var(--fg-muted);
   text-decoration: none;
 }
