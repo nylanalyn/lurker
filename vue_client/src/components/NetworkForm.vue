@@ -8,6 +8,7 @@
     :word="isEdit ? 'edit' : 'network'"
     :title="isEdit ? 'edit network' : 'add network'"
     size="sm"
+    :fill-height="step === 'pick'"
     @close="$emit('close')"
   >
     <NetworkPicker v-if="step === 'pick'" @select="onPick" @manual="onManual" />
