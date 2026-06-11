@@ -70,10 +70,6 @@
           </label>
         </div>
       </template>
-      <p v-else class="sasl-hint muted">
-        <strong>{{ picked?.name }}</strong> doesn’t use SASL — leave authentication blank (set a
-        server password under advanced options if the network needs one).
-      </p>
       <button type="button" class="advanced-toggle" @click="showAdvanced = !showAdvanced">
         {{ showAdvanced ? '− Advanced options' : '+ Advanced options' }}
       </button>
@@ -343,11 +339,6 @@ label small {
   color: var(--fg-muted);
   border-left: 2px solid var(--accent);
   padding-left: var(--space-3);
-}
-/* Informational (network doesn't use SASL), not an action prompt — a neutral
-   rule rather than the accent one. */
-.sasl-hint.muted {
-  border-left-color: var(--border);
 }
 .sasl-hint strong {
   color: var(--fg);

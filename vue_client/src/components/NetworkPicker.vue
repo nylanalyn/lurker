@@ -12,17 +12,29 @@
 
 <template>
   <div class="picker">
-    <input
-      v-model="query"
-      class="search"
-      type="search"
-      placeholder="Search networks…"
-      autocomplete="off"
-      spellcheck="false"
-      aria-label="Search networks"
-    />
+    <div class="search-row">
+      <input
+        v-model="query"
+        class="search"
+        type="search"
+        placeholder="Search networks…"
+        autocomplete="off"
+        spellcheck="false"
+        aria-label="Search networks"
+      />
+      <button
+        v-if="builtinNetworkTags.length"
+        type="button"
+        class="filter-toggle"
+        :class="{ on: showFilters || !!active }"
+        :aria-expanded="showFilters"
+        @click="showFilters = !showFilters"
+      >
+        <i class="fa-solid fa-filter"></i> {{ active || 'Filter' }}
+      </button>
+    </div>
 
-    <div v-if="builtinNetworkTags.length" class="tags" role="group" aria-label="Filter by tag">
+    <div v-if="showFilters && builtinNetworkTags.length" class="tags" role="group" aria-label="Filter by tag">
       <button
         v-for="tag in builtinNetworkTags"
         :key="tag"
@@ -40,9 +52,7 @@
       <li v-for="net in filtered" :key="net.name" class="net-card">
         <div class="net-head">
           <span class="net-name">{{ net.name }}</span>
-          <span v-if="net.tags.length" class="net-tags">
-            <span v-for="tag in net.tags" :key="tag" class="net-tag">{{ tag }}</span>
-          </span>
+          <span v-if="net.tags.length" class="net-tags">{{ net.tags.join(', ') }}</span>
         </div>
         <div class="net-meta">
           <span class="net-stats">
@@ -97,8 +107,10 @@ defineEmits<{ select: [net: BuiltinNetwork]; manual: [] }>();
 
 const query = ref('');
 // Single-select tag filter: clicking a chip selects it (clearing any other);
-// clicking the active chip again clears the filter.
+// clicking the active chip again clears the filter. The chip tray is collapsed
+// behind the Filter button by default.
 const active = ref<string | null>(null);
+const showFilters = ref(false);
 
 function toggleTag(tag: string): void {
   active.value = active.value === tag ? null : tag;
@@ -119,13 +131,14 @@ function siteLabel(url: string): string {
     .replace(/\/+$/, '');
 }
 
-// Text search narrows by name; the (single) selected tag narrows by category;
-// the two AND together.
+// Text search matches network name OR any tag (partial), so typing "gam" finds
+// gaming networks too; the (single) selected chip narrows by exact category.
+// The two AND together.
 const filtered = computed<BuiltinNetwork[]>(() => {
   const q = query.value.trim().toLowerCase();
   const tag = active.value;
   return builtinNetworks.filter((n) => {
-    if (q && !n.name.toLowerCase().includes(q)) return false;
+    if (q && !n.name.toLowerCase().includes(q) && !n.tags.some((t) => t.includes(q))) return false;
     if (tag && !n.tags.includes(tag)) return false;
     return true;
   });
@@ -140,10 +153,38 @@ const filtered = computed<BuiltinNetwork[]>(() => {
   flex: 1;
   min-height: 0;
 }
+.search-row {
+  display: flex;
+  gap: var(--space-3);
+  align-items: stretch;
+}
 .search {
   color: var(--fg);
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   box-sizing: border-box;
+}
+.filter-toggle {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+  text-transform: lowercase;
+}
+.filter-toggle:hover {
+  color: var(--fg);
+  border-color: var(--fg-muted);
+}
+.filter-toggle.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
 }
 /* Squared tray of toggle buttons, styled after the message-list hover action
    bar (.row-actions): bordered container, square corners, subtle --bg-soft
@@ -184,17 +225,15 @@ const filtered = computed<BuiltinNetwork[]>(() => {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-7);
 }
 /* The card is a plain info container; the only interactive elements are the
-   explicit "Choose" button and the website link (no whole-card click target). */
+   explicit "Choose" button and the website link (no whole-card click target).
+   No border — cards are separated by the list's vertical gap. */
 .net-card {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--space-3);
 }
 /* Stats (left) + website (right) share one line under the name. */
 .net-meta {
@@ -240,12 +279,10 @@ const filtered = computed<BuiltinNetwork[]>(() => {
   color: var(--fg);
   font-weight: 600;
 }
-/* Tags sit top-right opposite the name; wrap toward the right edge. */
+/* Tags: plain comma-separated text, top-right opposite the name. */
 .net-tags {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: var(--space-1);
+  color: var(--fg-muted);
+  text-align: right;
 }
 /* Counts sit under the name. */
 .net-stats {
@@ -256,12 +293,6 @@ const filtered = computed<BuiltinNetwork[]>(() => {
 }
 .stat i {
   opacity: 0.75;
-}
-.net-tag {
-  color: var(--fg-muted);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 0 var(--space-2);
 }
 .none {
   color: var(--fg-muted);
