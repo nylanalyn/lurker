@@ -37,7 +37,7 @@
     </div>
 
     <ul class="list">
-      <li v-for="net in filtered" :key="net.name">
+      <li v-for="net in filtered" :key="net.name" class="net-card">
         <button type="button" class="net-row" @click="$emit('select', net)">
           <span class="net-head">
             <span class="net-name">{{ net.name }}</span>
@@ -62,6 +62,16 @@
             </span>
           </span>
         </button>
+        <a
+          v-if="net.website"
+          class="net-site"
+          :href="net.website"
+          target="_blank"
+          rel="noopener noreferrer"
+          :title="`Visit the ${net.name} website (opens in a new tab)`"
+        >
+          {{ siteLabel(net.website) }} <i class="fa-solid fa-arrow-up-right-from-square"></i>
+        </a>
       </li>
       <li v-if="!filtered.length" class="none">No networks match.</li>
     </ul>
@@ -95,6 +105,14 @@ function formatCount(n: number): string {
   if (n >= 10000) return `${Math.round(n / 1000)}k`;
   if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`;
   return String(n);
+}
+
+// Strip scheme/www/trailing slash so the link reads as a bare domain.
+function siteLabel(url: string): string {
+  return url
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/\/+$/, '');
 }
 
 // Text search narrows by name/host; tag chips are OR'd (a network shows if it
@@ -165,6 +183,20 @@ const filtered = computed<BuiltinNetwork[]>(() => {
   flex-direction: column;
   gap: var(--space-1);
 }
+/* The card owns the chrome (padding, hover, border) so the select-button and
+   the website link can be siblings inside it — an <a> can't live in a <button>. */
+.net-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  padding: var(--space-3);
+}
+.net-card:hover {
+  background: var(--bg-soft);
+  border-color: var(--border);
+}
 .net-row {
   display: flex;
   flex-direction: column;
@@ -173,14 +205,25 @@ const filtered = computed<BuiltinNetwork[]>(() => {
   width: 100%;
   text-align: left;
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  padding: var(--space-3);
+  border: 0;
+  padding: 0;
   cursor: pointer;
 }
+/* Neutralise the global button:hover wash so only the card paints. */
 .net-row:hover {
-  background: var(--bg-soft);
-  border-color: var(--border);
+  background: transparent;
+}
+.net-site {
+  align-self: flex-start;
+  color: var(--fg-muted);
+  text-decoration: none;
+}
+.net-site:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.net-site i {
+  opacity: 0.75;
 }
 .net-head {
   display: flex;
