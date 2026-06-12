@@ -170,12 +170,11 @@ function onScroll() {
 }
 
 function onJoin(ch: ChanlistRow): void {
-  socketSend({ type: 'join', networkId: props.networkId, channel: ch.channel });
-  // Don't open/focus the buffer yet — wait for the server's channel-joined
-  // confirmation so a refused join (invite-only, needs registered nick, …)
-  // doesn't strand the user in a silent blank buffer (#260). requestJoin
-  // focuses it on confirmation and toasts on rejection.
-  buffers.requestJoin(props.networkId, ch.channel);
+  // If we're already in the channel (or have its buffer parted), just switch to
+  // it; otherwise join and wait for the channel-joined confirmation before
+  // focusing, so a refused join doesn't strand the user in a blank buffer
+  // (#260). joinOrActivate handles both, plus rejection toasts.
+  buffers.joinOrActivate(props.networkId, ch.channel);
   emit('close');
 }
 

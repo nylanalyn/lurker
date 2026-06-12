@@ -647,6 +647,31 @@ export const useBuffersStore = defineStore('buffers', {
       clearTimeout(timer);
       pendingJoins.delete(k);
     },
+    // Switch to a channel buffer if it's already open; otherwise join it. This
+    // is what /join and the channel-list both call. Channels are
+    // case-insensitive on IRC but buffers key by exact string, so match an
+    // existing buffer case-insensitively and reuse its real target — never open
+    // a second buffer for a different-cased name. Returns false only when a
+    // JOIN had to be sent but the socket was closed, so the caller can surface
+    // an offline toast.
+    joinOrActivate(networkId: number | string, channel: string): boolean {
+      const existing = this.forNetwork(networkId).find(
+        (b) => b.target.toLowerCase() === channel.toLowerCase(),
+      );
+      if (existing) {
+        // Already open (joined, or parted with history) — never blank, so focus
+        // it immediately. Re-send JOIN if we're not currently in it.
+        this.activate(networkId, existing.target);
+        if (existing.joined) return true;
+        return socketSend({ type: 'join', networkId, channel: existing.target });
+      }
+      // Brand-new channel: don't open optimistically (#260). Join and wait for
+      // the channel-joined confirmation; requestJoin focuses on success and
+      // toasts on rejection.
+      const ok = socketSend({ type: 'join', networkId, channel });
+      if (ok) this.requestJoin(networkId, channel);
+      return ok;
+    },
     setJoined(networkId: number | string, target: string, joined: boolean) {
       const buf = this.buffers[key(networkId, target)];
       if (!buf) return;
