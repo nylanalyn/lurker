@@ -256,8 +256,23 @@ export class IrcConnection {
     return !NON_PERSISTED_TYPES.has(event.type);
   }
 
+  // Channels are case-insensitive on IRC, but servers can relay events for the
+  // same channel with different casing than we joined with — DALnet echoes your
+  // own JOIN as #christian (the case you sent) yet relays everyone else's
+  // messages/joins/modes as the registered #Christian. The client keys buffers
+  // by exact target string, so a stray case spawns a second, metadata-less
+  // buffer (#268). Normalize every channel-scoped target to the case we know
+  // the channel by (this.channels is keyed lowercase; .name holds the
+  // first-seen/joined case) so all of a channel's events land in one buffer.
+  normalizeChannelTarget(event: IrcEvent): IrcEvent {
+    const target = canonicalChannelTarget(event.target, this.channels);
+    if (target === event.target) return event;
+    return { ...event, target };
+  }
+
   publish(event: IrcEvent): void {
     if (this.disposed) return;
+    event = this.normalizeChannelTarget(event);
     const time = (event.time as string | undefined) || new Date().toISOString();
     const enriched: EnrichedEvent = {
       ...event,
@@ -327,6 +342,7 @@ export class IrcConnection {
 
   publishEphemeral(event: IrcEvent): void {
     if (this.disposed) return;
+    event = this.normalizeChannelTarget(event);
     this.onEvent({
       ...event,
       userId: this.network.user_id,
@@ -390,6 +406,41 @@ export class IrcConnection {
         return;
       }
       const text = formatServerNumeric(msg);
+      if (!text) return;
+      this.publish({ type: 'motd', target: this.serverTarget(), text });
+    });
+
+    // Catch-all for inbound server numerics/commands irc-framework has no
+    // handler for (391 RPL_TIME, 351 RPL_VERSION, 477 ERR_NEEDREGGEDNICK, plus
+    // any server-specific numeric). Without this they surface only as the
+    // 'unknown command' event — which nothing listened to — and were dropped on
+    // the floor (#262). The 'raw' handler above renders only the curated
+    // allowlist in formatServerNumeric, so everything else vanished silently.
+    c.on('unknown command', (cmd: { command?: string; params?: string[] }) => {
+      const command = (cmd?.command || '').toString();
+      const params = Array.isArray(cmd?.params) ? (cmd.params as string[]) : [];
+      // Channel-join rejections irc-framework doesn't model (476/477) arrive
+      // here as [nick, #channel, reason]. Route them to the channel as an
+      // ephemeral toast so the failure surfaces where the user tried to join,
+      // not buried in the server buffer (#260). The client never opened the
+      // buffer (it waits for channel-joined), so this is toast-only.
+      const joinMsg = joinRejectionMessage(command);
+      if (joinMsg && typeof params[1] === 'string' && params[1]) {
+        this.publishEphemeral({
+          type: 'join-error',
+          target: params[1],
+          text: joinMsg,
+          reason: params[params.length - 1] || null,
+        });
+        return;
+      }
+      // Dedup guard: if formatServerNumeric already renders this numeric, the
+      // 'raw' handler above produced the line — don't double-render. Only
+      // genuinely unclaimed numerics fall through to the catch-all. Pass the
+      // sanitized {command, params} (not the raw cmd) so a malformed params
+      // value can't throw inside the formatters and crash the connection.
+      if (formatServerNumeric({ command, params })) return;
+      const text = formatUnknownNumeric({ command, params });
       if (!text) return;
       this.publish({ type: 'motd', target: this.serverTarget(), text });
     });
@@ -900,24 +951,29 @@ export class IrcConnection {
     c.on('part', (event: Record<string, unknown>) => {
       const eventChannel = event.channel as string;
       const eventNick = event.nick as string;
+      // Resolve the canonical (joined-case) channel name *before* the self-part
+      // deletes it from this.channels below — the post-delete channel-parted
+      // publish can't normalize once the entry is gone, and would otherwise leak
+      // the server's relayed case (#268).
+      const channel = canonicalChannelTarget(eventChannel, this.channels) ?? eventChannel;
       const ch = this.channels.get(eventChannel.toLowerCase());
       if (ch) ch.members.delete(eventNick.toLowerCase());
       this.publish({
         type: 'part',
-        target: eventChannel,
+        target: channel,
         nick: eventNick,
         text: event.message as string | undefined,
         userhost: buildUserhost(event),
       });
       if (eventNick === c.user.nick) {
         this.channels.delete(eventChannel.toLowerCase());
-        this.publish({ type: 'channel-parted', target: eventChannel });
+        this.publish({ type: 'channel-parted', target: channel });
         systemLog.log({
           userId: this.network.user_id,
           scope: this.logScope(),
           text: event.message
-            ? `Parted ${eventChannel}: ${event.message as string}`
-            : `Parted ${eventChannel}`,
+            ? `Parted ${channel}: ${event.message as string}`
+            : `Parted ${channel}`,
         });
       }
     });
@@ -926,11 +982,17 @@ export class IrcConnection {
       const eventChannel = event.channel as string;
       const eventNick = event.nick as string;
       const eventKicked = event.kicked as string;
+      // Canonical (joined-case) name, resolved before the self-kick deletes the
+      // channel from this.channels — so the persisted channels row and the
+      // channel-parted publish use our case, not the server's relayed case. A
+      // kick relayed as #Christian was how a stray-case channels row got written
+      // and then auto-rejoined verbatim (#268).
+      const channel = canonicalChannelTarget(eventChannel, this.channels) ?? eventChannel;
       const ch = this.channels.get(eventChannel.toLowerCase());
       if (ch) ch.members.delete(eventKicked.toLowerCase());
       this.publish({
         type: 'kick',
-        target: eventChannel,
+        target: channel,
         nick: eventNick,
         kicked: eventKicked,
         text: event.message as string | undefined,
@@ -942,11 +1004,11 @@ export class IrcConnection {
       if (eventKicked && c.user.nick && eventKicked.toLowerCase() === c.user.nick.toLowerCase()) {
         this.channels.delete(eventChannel.toLowerCase());
         try {
-          upsertChannel(this.network.id, eventChannel, false);
+          upsertChannel(this.network.id, channel, false);
         } catch (_) {
           /* ignore */
         }
-        this.publish({ type: 'channel-parted', target: eventChannel });
+        this.publish({ type: 'channel-parted', target: channel });
       }
     });
 
@@ -1347,6 +1409,23 @@ export class IrcConnection {
           target: eventNick,
           text: message,
           raw: event,
+        });
+        return;
+      }
+      // Channel-join rejections (full / invite-only / banned / bad key / too
+      // many channels) carry the target in event.channel. Route them to that
+      // channel as an ephemeral toast so the failure surfaces where the user
+      // tried to join instead of in the server buffer (#260). Toast-only: the
+      // client waits for channel-joined before opening the buffer, so on
+      // failure there is no buffer to render into.
+      const rejectChannel = event?.channel as string | undefined;
+      const rejectMsg = rejectChannel ? joinRejectionMessageByTag(tag) : null;
+      if (rejectChannel && rejectMsg) {
+        this.publishEphemeral({
+          type: 'join-error',
+          target: rejectChannel,
+          text: rejectMsg,
+          reason,
         });
         return;
       }
@@ -1958,4 +2037,72 @@ export function formatServerNumeric(
     default:
       return null;
   }
+}
+
+// Friendly, user-facing messages for channel-join rejections, keyed by the raw
+// IRC numeric. irc-framework models 405/471/473/474/475 as 'irc error' events
+// (use joinRejectionMessageByTag for those); 476/477 it doesn't map at all and
+// they arrive via the 'unknown command' event. Both paths funnel into the same
+// client `join-error` toast so the failure shows up on the channel the user
+// tried to join (#260).
+const JOIN_REJECTION_MESSAGES: Record<string, string> = {
+  '405': 'You have joined too many channels.', // ERR_TOOMANYCHANNELS
+  '471': 'This channel is full.', // ERR_CHANNELISFULL (+l)
+  '473': 'This channel is invite-only.', // ERR_INVITEONLYCHAN (+i)
+  '474': 'You are banned from this channel.', // ERR_BANNEDFROMCHAN (+b)
+  '475': 'This channel requires a key (password).', // ERR_BADCHANNELKEY (+k)
+  '476': 'Bad channel mask.', // ERR_BADCHANMASK
+  '477': 'This channel requires a registered nickname.', // ERR_NEEDREGGEDNICK
+};
+
+// irc-framework's 'irc error' event reports a short string tag instead of the
+// numeric; map the channel-join rejection tags onto the same messages.
+const JOIN_REJECTION_TAGS: Record<string, string> = {
+  too_many_channels: JOIN_REJECTION_MESSAGES['405'],
+  channel_is_full: JOIN_REJECTION_MESSAGES['471'],
+  invite_only_channel: JOIN_REJECTION_MESSAGES['473'],
+  banned_from_channel: JOIN_REJECTION_MESSAGES['474'],
+  bad_channel_key: JOIN_REJECTION_MESSAGES['475'],
+};
+
+// Resolve a published event's channel target to the case we know the channel
+// by. IRC channels are case-insensitive, so an event the server relays with a
+// different case (DALnet's registered #Christian vs. the #christian you joined)
+// must map onto the same buffer instead of forking a new one (#268). Returns
+// the input unchanged for non-channel targets and channels we don't track.
+export function canonicalChannelTarget(
+  target: string | undefined,
+  channels: Map<string, { name: string }>,
+): string | undefined {
+  if (typeof target !== 'string' || !target.startsWith('#')) return target;
+  const known = channels.get(target.toLowerCase());
+  return known ? known.name : target;
+}
+
+export function joinRejectionMessage(numeric: string): string | null {
+  return JOIN_REJECTION_MESSAGES[numeric] || null;
+}
+
+export function joinRejectionMessageByTag(tag: string): string | null {
+  return JOIN_REJECTION_TAGS[tag] || null;
+}
+
+// Render an unhandled server numeric into a single server-buffer line. Only
+// 3-digit numerics are surfaced (the catch-all should stay quiet on stray
+// command words); the first param is always the recipient nick and is dropped,
+// and the remaining params — where the human-readable content lives — are
+// joined. Returns null for non-numerics and empty bodies.
+export function formatUnknownNumeric(
+  msg: { command?: string; params?: string[] } | null | undefined,
+): string | null {
+  if (!msg) return null;
+  const command = (msg.command || '').toString();
+  if (!/^\d{3}$/.test(command)) return null;
+  const params = msg.params || [];
+  const body = params
+    .slice(1)
+    .filter((p): p is string => typeof p === 'string' && p.length > 0)
+    .join(' ')
+    .trim();
+  return body || null;
 }

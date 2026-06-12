@@ -1707,7 +1707,11 @@ function handleCommand(line: string, networkId: number, target: string): boolean
     case 'join':
       if (rest[0]) {
         const ch = rest[0].startsWith('#') ? rest[0] : `#${rest[0]}`;
-        return sendOrToast({ type: 'join', networkId, channel: ch }, line);
+        // Switch to the channel if we're already in it; otherwise join. Returns
+        // false only when a JOIN had to be sent but the socket was closed.
+        if (buffers.joinOrActivate(networkId, ch)) return true;
+        toastSendFailure('disconnected', line);
+        return false;
       }
       return true;
     case 'part':

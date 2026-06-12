@@ -3,6 +3,7 @@
 
 import { defineStore } from 'pinia';
 import { useNetworksStore } from './networks.js';
+import { useToastsStore } from './toasts.js';
 import { socketSend } from '../composables/useSocket.js';
 
 const MAX_PER_BUFFER = 500;
@@ -10,6 +11,17 @@ const MAX_SPEAKERS = 128;
 const TYPING_DURATIONS: Record<string, number> = { active: 6000, paused: 30000 };
 
 const typingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+// Pending joins (#260): a join from the channel list or a typed /join no longer
+// opens its buffer optimistically — requestJoin records the intent here and the
+// buffer is only activate()d once the server confirms with channel-joined. A
+// timeout backstops the silent case where the server drops the JOIN with no
+// numeric at all (the original symptom — a blank buffer with no error anywhere).
+const pendingJoins = new Map<string, ReturnType<typeof setTimeout>>();
+const PENDING_JOIN_TIMEOUT = 10000;
+function joinKey(networkId: number | string, channel: string) {
+  return `${networkId}::${channel.toLowerCase()}`;
+}
 
 // Monotonic token tagged onto each loadAround / reattachToLive request. The
 // response handler drops slices whose token has been superseded (e.g. user
@@ -596,6 +608,73 @@ export const useBuffersStore = defineStore('buffers', {
     resetTimers() {
       for (const id of typingTimers.values()) clearTimeout(id);
       typingTimers.clear();
+      for (const id of pendingJoins.values()) clearTimeout(id);
+      pendingJoins.clear();
+    },
+    // Register intent to join a channel without opening its buffer yet (#260).
+    // confirmPendingJoin() activates it on the channel-joined confirmation;
+    // cancelPendingJoin() drops it on a join-error. The timeout is the backstop
+    // for a server that never replies at all.
+    requestJoin(networkId: number | string, channel: string) {
+      const k = joinKey(networkId, channel);
+      const existing = pendingJoins.get(k);
+      if (existing) clearTimeout(existing);
+      const timer = setTimeout(() => {
+        pendingJoins.delete(k);
+        useToastsStore().push({
+          kind: 'warn',
+          title: `No response joining ${channel}`,
+          body: 'The server didn’t confirm the join.',
+          networkId: typeof networkId === 'string' ? Number(networkId) : networkId,
+          target: channel,
+          ttlMs: 6000,
+        });
+      }, PENDING_JOIN_TIMEOUT);
+      pendingJoins.set(k, timer);
+    },
+    confirmPendingJoin(networkId: number | string, channel: string) {
+      const k = joinKey(networkId, channel);
+      const timer = pendingJoins.get(k);
+      if (!timer) return; // no pending join for this channel — leave focus untouched
+      clearTimeout(timer);
+      pendingJoins.delete(k);
+      this.activate(networkId, channel);
+    },
+    cancelPendingJoin(networkId: number | string, channel: string) {
+      const k = joinKey(networkId, channel);
+      const timer = pendingJoins.get(k);
+      if (!timer) return;
+      clearTimeout(timer);
+      pendingJoins.delete(k);
+    },
+    // Switch to a channel buffer if it's already open; otherwise join it. This
+    // is what /join and the channel-list both call. Channels are
+    // case-insensitive on IRC but buffers key by exact string, so match an
+    // existing buffer case-insensitively and reuse its real target — never open
+    // a second buffer for a different-cased name. Returns false only when a
+    // JOIN had to be sent but the socket was closed, so the caller can surface
+    // an offline toast.
+    joinOrActivate(networkId: number | string, channel: string): boolean {
+      // forNetwork compares networkId with === against the numeric
+      // Buffer.networkId, so coerce a numeric-string id first — otherwise an
+      // existing buffer wouldn't match and we'd send a duplicate JOIN.
+      const nid = typeof networkId === 'string' ? Number(networkId) : networkId;
+      const existing = this.forNetwork(nid).find(
+        (b) => b.target.toLowerCase() === channel.toLowerCase(),
+      );
+      if (existing) {
+        // Already open (joined, or parted with history) — never blank, so focus
+        // it immediately. Re-send JOIN if we're not currently in it.
+        this.activate(nid, existing.target);
+        if (existing.joined) return true;
+        return socketSend({ type: 'join', networkId: nid, channel: existing.target });
+      }
+      // Brand-new channel: don't open optimistically (#260). Join and wait for
+      // the channel-joined confirmation; requestJoin focuses on success and
+      // toasts on rejection.
+      const ok = socketSend({ type: 'join', networkId: nid, channel });
+      if (ok) this.requestJoin(nid, channel);
+      return ok;
     },
     setJoined(networkId: number | string, target: string, joined: boolean) {
       const buf = this.buffers[key(networkId, target)];
