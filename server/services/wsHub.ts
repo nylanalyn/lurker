@@ -515,6 +515,11 @@ export function presenceDiagnostics(): PresenceDiagnosticRow[] {
       openSockets += 1;
       if (ws.presence?.visible) visibleSockets += 1;
     }
+    // A user key lingers while their set is non-empty, but every socket in it
+    // can be mid-teardown (CLOSING/CLOSED) before the 'close' handler prunes it.
+    // Skip those transient all-zero rows so the diagnostic only lists users with
+    // a genuinely live socket — matching what this function claims to report.
+    if (openSockets === 0) continue;
     const awayRow = getUserAwayState(userId);
     rows.push({
       userId,
