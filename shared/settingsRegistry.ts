@@ -1039,6 +1039,19 @@ export const REGISTRY: readonly SettingOption[] = Object.freeze([
   },
 
   {
+    key: 'notifications.friend_online.enabled',
+    label: 'Friend online notifications',
+    category: 'notifications',
+    group: 'alerts',
+    type: 'bool',
+    default: true,
+    description:
+      'Toast me when a friend I have flagged "notify when online" comes online. ' +
+      'The per-friend toggle (in the Configure Friend dialog) is the opt-in; this ' +
+      'is the global master.',
+  },
+
+  {
     key: 'notifications.always_notify.enabled',
     label: 'Always-notify channel notifications',
     category: 'notifications',

@@ -12,6 +12,7 @@ import {
 import type { Network } from '../db/networks.js';
 import { upsertChannel } from '../db/networks.js';
 import { isClosed as isBufferClosed } from '../db/closedBuffers.js';
+import { listTargetsForNetwork as listFriendTargetsForNetwork } from '../db/contacts.js';
 import * as chanlistDb from '../db/chanlist.js';
 import type { PeerPresence, PeerState } from '../db/peerPresence.js';
 import {
@@ -100,6 +101,8 @@ interface EnrichedEvent extends IrcEvent {
   alt?: boolean;
   matched?: boolean;
   matchedRuleId?: number | null;
+  friend?: boolean;
+  friendContactId?: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -155,6 +158,11 @@ export class IrcConnection {
   userModes: Set<string>;
   awayState: AwayState;
   trackedDmPeers: Set<string>;
+  // Lowercased friend nick -> contact id, for this network. Hydrated on
+  // 'registered' from contact_targets and kept live via trackFriend/
+  // untrackFriend. Doubles as the O(1) insert-time marking lookup (stamp
+  // friend_contact_id) AND a presence-eligibility source alongside DM peers.
+  trackedFriends: Map<string, number>;
   useMonitor: boolean;
   monitorLimit: number;
   pendingMonitorSeed: boolean;
@@ -191,6 +199,7 @@ export class IrcConnection {
     // user on a busy network. Hydrated on 'registered' from message history
     // and grown as new DM activity arrives.
     this.trackedDmPeers = new Set();
+    this.trackedFriends = new Map();
     // MONITOR (IRCv3) is the presence transport. `useMonitor` is set once
     // ISUPPORT confirms the server speaks it; `monitorLimit` is the per-
     // connection watch cap. `pendingMonitorSeed` flips true on 'registered'
@@ -317,6 +326,12 @@ export class IrcConnection {
           console.warn('[ignore] match-on-insert failed:', (e as Error)?.message || e);
         }
       }
+      // Stamp the contact id when the sender is on this user's watch list, so
+      // the cross-network Friends buffer reads marked rows. O(1) lookup against
+      // the in-memory trackedFriends map — no DB hit on the insert hot path.
+      // Self rows and nick-less system rows never match.
+      const friendContactId =
+        nick && !event.self ? (this.trackedFriends.get(nick.toLowerCase()) ?? null) : null;
       const { id, alt } = insertMessage({
         networkId: this.network.id,
         target: event.target as string,
@@ -328,6 +343,7 @@ export class IrcConnection {
         self: event.self as boolean | undefined,
         extra: extractExtras(event),
         matchedRuleId,
+        friendContactId,
         userhost: (event.userhost as string | null | undefined) ?? null,
         fromIgnored,
       });
@@ -335,6 +351,8 @@ export class IrcConnection {
       enriched.alt = alt;
       enriched.matched = matchedRuleId != null;
       enriched.matchedRuleId = matchedRuleId;
+      enriched.friend = friendContactId != null;
+      enriched.friendContactId = friendContactId;
     }
 
     this.onEvent(enriched);
@@ -474,6 +492,17 @@ export class IrcConnection {
         }
       } catch (e) {
         console.warn('[presence] hydrate failed:', (e as Error)?.message || e);
+      }
+      // Hydrate the friend watch list (lowernick -> contactId) before the
+      // MONITOR seed runs, so seedMonitorWatch watches friends too and the
+      // insert-time marking map is populated for any backlog that arrives.
+      this.trackedFriends.clear();
+      try {
+        for (const { contactId, nick } of listFriendTargetsForNetwork(this.network.id)) {
+          this.trackedFriends.set(nick.toLowerCase(), contactId);
+        }
+      } catch (e) {
+        console.warn('[friends] hydrate failed:', (e as Error)?.message || e);
       }
       this.setState('connected', { nick: registeredNick });
       // Defer the MONITOR + handshake until ISUPPORT tells us the server
@@ -636,11 +665,12 @@ export class IrcConnection {
       }
       if (this.pendingMonitorSeed) {
         this.pendingMonitorSeed = false;
-        if (this.trackedDmPeers.size > 0) {
+        const seedCount = this.monitoredNicks().length;
+        if (seedCount > 0) {
           systemLog.log({
             userId: this.network.user_id,
             scope: this.logScope(),
-            text: `Seeding MONITOR with ${this.trackedDmPeers.size} DM peer${this.trackedDmPeers.size === 1 ? '' : 's'}`,
+            text: `Seeding MONITOR with ${seedCount} nick${seedCount === 1 ? '' : 's'} (DM peers + friends)`,
           });
           this.seedMonitorWatch();
         }
@@ -1491,7 +1521,9 @@ export class IrcConnection {
     if (!nick) return null;
     const me = this.client.user?.nick;
     if (me && nick.toLowerCase() === me.toLowerCase()) return null;
-    if (!this.trackedDmPeers.has(nick.toLowerCase())) return null;
+    const lower = nick.toLowerCase();
+    // Presence fires for DM peers AND friends — both are MONITOR-watched.
+    if (!this.trackedDmPeers.has(lower) && !this.trackedFriends.has(lower)) return null;
     return nick;
   }
 
@@ -1555,8 +1587,16 @@ export class IrcConnection {
   // batching in ircManager.startNetwork). Any nicks beyond monitorLimit
   // are kept in the in-memory set but skipped on the wire; we surface a
   // notice so the user knows live presence is degraded for the overflow.
+  // Deduped union of the nicks we want MONITORed: DM peers and friends share
+  // the one per-connection MONITOR budget.
+  monitoredNicks(): string[] {
+    const set = new Set<string>(this.trackedDmPeers);
+    for (const nick of this.trackedFriends.keys()) set.add(nick);
+    return Array.from(set);
+  }
+
   seedMonitorWatch(): void {
-    const peers = Array.from(this.trackedDmPeers);
+    const peers = this.monitoredNicks();
     if (peers.length === 0) return;
     const cap = this.monitorLimit > 0 ? this.monitorLimit : peers.length;
     const watched = peers.slice(0, cap);
@@ -1566,7 +1606,7 @@ export class IrcConnection {
         type: 'notice',
         target: this.serverTarget(),
         nick: 'lurker',
-        text: `MONITOR limit (${this.monitorLimit}) reached; live presence skipped for ${overflow} DM peer${overflow === 1 ? '' : 's'}.`,
+        text: `MONITOR limit (${this.monitorLimit}) reached; live presence skipped for ${overflow} nick${overflow === 1 ? '' : 's'}.`,
       });
     }
     // "MONITOR + " prefix is 11 bytes; leave headroom for trailing \r\n
@@ -1650,6 +1690,8 @@ export class IrcConnection {
     if (!nick) return;
     const lower = nick.toLowerCase();
     const wasTracked = this.trackedDmPeers.delete(lower);
+    // Still a friend? Keep the MONITOR watch + presence row — they're shared.
+    if (this.trackedFriends.has(lower)) return;
     if (wasTracked && this.useMonitor && this.state === 'connected') {
       try {
         this.client.raw('MONITOR - ' + nick);
@@ -1661,6 +1703,54 @@ export class IrcConnection {
       deletePeerPresence(this.network.id, nick);
     } catch (e) {
       console.warn('[presence] untrack failed:', (e as Error)?.message || e);
+    }
+  }
+
+  // Friend counterparts of trackDmPeer/untrackDmPeer. A friend nick shares the
+  // same MONITOR watch + peer_presence_state row as a DM peer would, so the
+  // wire/DB side only fires when the nick isn't ALSO held by the other role.
+  trackFriend(nick: string | undefined | null, contactId: number): void {
+    if (!nick) return;
+    const me = this.client.user?.nick;
+    if (me && nick.toLowerCase() === me.toLowerCase()) return;
+    const lower = nick.toLowerCase();
+    const wasMonitored = this.trackedDmPeers.has(lower) || this.trackedFriends.has(lower);
+    this.trackedFriends.set(lower, contactId);
+    if (wasMonitored || !this.useMonitor || this.state !== 'connected') return;
+    if (this.monitoredNicks().length > this.monitorLimit) {
+      this.publish({
+        type: 'notice',
+        target: this.serverTarget(),
+        nick: 'lurker',
+        text: `MONITOR limit (${this.monitorLimit}) reached; live presence skipped for ${nick}.`,
+      });
+      return;
+    }
+    try {
+      this.client.raw('MONITOR + ' + nick);
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  untrackFriend(nick: string | undefined | null): void {
+    if (!nick) return;
+    const lower = nick.toLowerCase();
+    const wasTracked = this.trackedFriends.delete(lower);
+    if (!wasTracked) return;
+    // Still a DM peer? Keep the MONITOR watch + presence row — they're shared.
+    if (this.trackedDmPeers.has(lower)) return;
+    if (this.useMonitor && this.state === 'connected') {
+      try {
+        this.client.raw('MONITOR - ' + nick);
+      } catch (_) {
+        /* ignore */
+      }
+    }
+    try {
+      deletePeerPresence(this.network.id, nick);
+    } catch (e) {
+      console.warn('[friends] untrack failed:', (e as Error)?.message || e);
     }
   }
 
@@ -1954,10 +2044,12 @@ export class IrcConnection {
       // store. Filtered to tracked peers so closed-DM rows don't leak.
       peerPresence: Object.fromEntries(
         listPeerPresenceForNetwork(this.network.id)
-          .filter(
-            (row): row is PeerPresence =>
-              row != null && this.trackedDmPeers.has(row.nick.toLowerCase()),
-          )
+          .filter((row): row is PeerPresence => {
+            if (row == null) return false;
+            const lower = row.nick.toLowerCase();
+            // DM peers AND friends — both render presence on the client.
+            return this.trackedDmPeers.has(lower) || this.trackedFriends.has(lower);
+          })
           .map((row) => [row.nick.toLowerCase(), row]),
       ),
     };

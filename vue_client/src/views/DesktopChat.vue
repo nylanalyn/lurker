@@ -59,8 +59,8 @@
       </div>
     </aside>
 
-    <header v-if="isSystemConsole" class="topic">
-      <span class="buffer">System console</span>
+    <header v-if="isVirtual" class="topic">
+      <span class="buffer">{{ bufferLabel }}</span>
     </header>
     <header v-else-if="active" class="topic">
       <div class="topic-meta">
@@ -149,13 +149,13 @@
         </template>
       </div>
     </header>
-    <div v-if="active || isSystemConsole" class="topic-divider"></div>
+    <div v-if="active || isVirtual" class="topic-divider"></div>
 
     <SystemConsole v-if="isSystemConsole" />
     <MessageList v-else ref="messageListRef" :pending-scroll-id="pendingScrollId" />
     <MemberList v-if="showMembers && !isSystemConsole" />
     <StatusBar />
-    <MessageInput v-if="!isSystemConsole" ref="messageInputRef" />
+    <MessageInput v-if="!isVirtual" ref="messageInputRef" />
 
     <NetworkForm
       v-if="networkEditor.isOpen"
@@ -201,6 +201,7 @@
       :nick="nickNotes.editor.nick"
       :network-id="nickNotes.editor.networkId"
     />
+    <ConfigureFriendModal v-if="friends.editor.open" />
   </div>
 </template>
 
@@ -230,11 +231,13 @@ import QuickSwitcher from '../components/QuickSwitcher.vue';
 import SearchModal from '../components/SearchModal.vue';
 import KeyboardHelpModal from '../components/KeyboardHelpModal.vue';
 import NickNoteModal from '../components/NickNoteModal.vue';
+import ConfigureFriendModal from '../components/ConfigureFriendModal.vue';
 import UserProfileModal from '../components/UserProfileModal.vue';
 import ImageViewerModal from '../components/ImageViewerModal.vue';
 import { useKeyboardShortcuts } from '../composables/useKeyboardShortcuts.js';
 import { useNicklistCollapseStore } from '../stores/nicklistCollapse.js';
 import { useNickNotesStore } from '../stores/nickNotes.js';
+import { useFriendsStore } from '../stores/friends.js';
 import { useWhoisStore } from '../stores/whois.js';
 import { useChannelNotifyStore } from '../stores/channelNotify.js';
 import { useChannelListModal } from '../composables/useChannelListModal.js';
@@ -244,8 +247,17 @@ import { useJumpToMessage } from '../composables/useJumpToMessage.js';
 
 const networks = useNetworksStore();
 const { connected } = useSocket();
-const { active, activeBuf, topic, isServerBuffer, isChannel, bufferLabel, isSystemConsole } =
-  useActiveBuffer();
+const {
+  active,
+  activeBuf,
+  topic,
+  isServerBuffer,
+  isChannel,
+  bufferLabel,
+  isSystemConsole,
+  isVirtual,
+  isFriendsBuffer,
+} = useActiveBuffer();
 
 function openSystemConsole() {
   networks.activateSystem();
@@ -253,6 +265,7 @@ function openSystemConsole() {
 const settings = useSettingsStore();
 const nicklistCollapse = useNicklistCollapseStore();
 const nickNotes = useNickNotesStore();
+const friends = useFriendsStore();
 const whois = useWhoisStore();
 const channelNotify = useChannelNotifyStore();
 
@@ -409,6 +422,8 @@ const memberCount = computed(() => {
 // look.layout.show_member_list default applies. DMs and server buffers have no
 // member list at all, so the toggle and panel are hidden for them entirely.
 const showMembers = computed(() => {
+  // The Friends buffer always shows its (synthetic) nicklist.
+  if (isFriendsBuffer.value) return true;
   if (!isChannel.value || !active.value) return false;
   const { networkId, target } = active.value;
   const override = nicklistCollapse.override(networkId, target);

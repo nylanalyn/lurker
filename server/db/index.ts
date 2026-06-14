@@ -391,6 +391,33 @@ function migrate() {
     CREATE INDEX IF NOT EXISTS idx_user_nick_notes_user_net
       ON user_nick_notes(user_id, network_id);
 
+    -- Friends / watch-list. A "contact" is a person, network-agnostic: it carries
+    -- the display name and the per-contact "toast me when they come online" flag.
+    -- contact_targets is the per-network watch list — which (network, nick) to
+    -- follow for this person — so one contact can be watched as "darc" on Libera
+    -- and "jay" elsewhere. nick collates NOCASE; one watched nick per (person,
+    -- network). Both cascade on user/network delete.
+    CREATE TABLE IF NOT EXISTS contacts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      display_name TEXT NOT NULL,
+      notify_online INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_contacts_user ON contacts(user_id);
+
+    CREATE TABLE IF NOT EXISTS contact_targets (
+      contact_id INTEGER NOT NULL,
+      network_id INTEGER NOT NULL,
+      nick TEXT NOT NULL COLLATE NOCASE,
+      PRIMARY KEY (contact_id, network_id),
+      FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE,
+      FOREIGN KEY (network_id) REFERENCES networks(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_contact_targets_net_nick
+      ON contact_targets(network_id, nick);
+
     -- Per-(user, message) bookmarks. Operator hits "Save" on a message in the
     -- context menu to pin it for later recall via the bookmarks modal. The
     -- message_id FK cascades, so bookmarks evaporate when their underlying
@@ -568,6 +595,16 @@ ensureColumn('messages', 'matched_rule_id', 'INTEGER');
 db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_matched
          ON messages(network_id, target, id DESC)
          WHERE matched_rule_id IS NOT NULL`);
+
+// Stamp the contact id when a message's sender is on the user's watch list, so
+// the cross-network Friends buffer reads marked rows from disk instead of
+// scanning loaded buffers. Same shape as matched_rule_id; partial index keeps
+// it cheap — only friend rows live in the index. Set once at insert from the
+// connection's in-memory trackedFriends map; never recomputed.
+ensureColumn('messages', 'friend_contact_id', 'INTEGER');
+db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_friend
+         ON messages(network_id, target, id DESC)
+         WHERE friend_contact_id IS NOT NULL`);
 
 // Per-(network, target) alt-row parity, computed at insert time so the client
 // can stripe chat lines without doing its own counting. Only chat-shaped types

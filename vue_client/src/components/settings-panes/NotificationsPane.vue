@@ -138,6 +138,27 @@
       </div>
     </div>
 
+    <div class="hl-notif notif-signal">
+      <h4 class="notif-signal-title">friend online</h4>
+      <p class="section-desc small">
+        Toast me when a friend I've flagged "notify when online" comes online. The per-friend toggle
+        in the Configure Friend dialog is the opt-in.
+      </p>
+      <label class="hl-row" data-setting-key="notifications.friend_online.enabled">
+        <input
+          type="checkbox"
+          :checked="!!settings.effective('notifications.friend_online.enabled')"
+          @change="
+            onCommit(
+              'notifications.friend_online.enabled',
+              ($event.target as HTMLInputElement).checked,
+            )
+          "
+        />
+        <span>notify me</span>
+      </label>
+    </div>
+
     <hr class="hl-sep" />
     <h3 class="subhead">always-notify channels</h3>
     <p class="section-desc">

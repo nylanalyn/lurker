@@ -5,6 +5,7 @@ import { defineStore } from 'pinia';
 import { useNetworksStore } from './networks.js';
 import { useToastsStore } from './toasts.js';
 import { socketSend } from '../composables/useSocket.js';
+import { FRIENDS_KEY } from '../lib/virtualBuffers.js';
 
 const MAX_PER_BUFFER = 500;
 const MAX_SPEAKERS = 128;
@@ -115,6 +116,65 @@ export interface Buffer {
   modes?: string;
 }
 
+function makeBuffer(networkId: number | string, target: string): Buffer {
+  return {
+    networkId: Number(networkId),
+    target,
+    messages: [],
+    members: [],
+    topic: null,
+    // Channels flip to false on PART/KICK and back to true on JOIN. DMs and
+    // server pseudo-buffers have no join concept; default true so they
+    // never render dimmed.
+    joined: true,
+    unread: 0,
+    highlighted: 0,
+    highlightsCapped: false,
+    // Server-owned "have I seen this" pointer. Drives unread counts and
+    // survives across devices/sessions.
+    lastReadId: 0,
+    // Local snapshot of lastReadId taken when the user activates this
+    // buffer. The unread divider in MessageList renders after the message
+    // with this id; it stays pinned until switch-away (matching WeeChat),
+    // not advanced live as new messages arrive in the focused buffer.
+    dividerAfterId: null,
+    // /clear marker — server-owned, mirrored here for render-time filtering.
+    // 0 / null mean no clear active.
+    clearedBeforeId: 0,
+    clearedAt: null,
+    typing: {},
+    oldestId: null,
+    // Symmetric to oldestId. Only authoritative while detached or mid-page-
+    // down — otherwise messages[length-1].id is the implicit "newest" and
+    // this is left null. Set on around/after/latest responses.
+    newestId: null,
+    // Split of the old `hasMore` flag. hasMoreOlder drives the existing
+    // upward pager; hasMoreNewer is only meaningful while detached or while
+    // the user has paged past the live tail (not currently possible
+    // outside detach mode, but the field is here for future symmetry).
+    hasMoreOlder: true,
+    hasMoreNewer: false,
+    loadingHistory: false,
+    speakers: {},
+    // Detached mode: buffer is viewing a bounded historical slice around
+    // some anchor message id rather than the live tail. While detached,
+    // pushMessage drops fanOut (and counts via liveDuringDetach), activate
+    // skips its mark-read advance, and replaceBacklog (snapshot resume)
+    // is a no-op. The user exits via the StatusBar "Return to present"
+    // button (reattachToLive), via switching to another buffer, or via WS
+    // reconnect — all three reset the flag.
+    detached: false,
+    liveDuringDetach: 0,
+    pendingHistoryToken: null,
+    // Set when the buffer's slice was wiped on switch-away from detach.
+    // activate() consumes it on re-entry to fire a fresh latest fetch, so
+    // the user doesn't sit on a permanently empty buffer (the server only
+    // ships backlog unsolicited via sendSnapshot, so there's no other
+    // automatic source of history once the slice has been wiped).
+    pendingRefetch: false,
+  };
+}
+
 function ensureBuffer(
   state: { buffers: Record<string, Buffer> },
   networkId: number | string,
@@ -122,62 +182,7 @@ function ensureBuffer(
 ): Buffer {
   const k = key(networkId, target);
   if (!state.buffers[k]) {
-    state.buffers[k] = {
-      networkId: Number(networkId),
-      target,
-      messages: [],
-      members: [],
-      topic: null,
-      // Channels flip to false on PART/KICK and back to true on JOIN. DMs and
-      // server pseudo-buffers have no join concept; default true so they
-      // never render dimmed.
-      joined: true,
-      unread: 0,
-      highlighted: 0,
-      highlightsCapped: false,
-      // Server-owned "have I seen this" pointer. Drives unread counts and
-      // survives across devices/sessions.
-      lastReadId: 0,
-      // Local snapshot of lastReadId taken when the user activates this
-      // buffer. The unread divider in MessageList renders after the message
-      // with this id; it stays pinned until switch-away (matching WeeChat),
-      // not advanced live as new messages arrive in the focused buffer.
-      dividerAfterId: null,
-      // /clear marker — server-owned, mirrored here for render-time filtering.
-      // 0 / null mean no clear active.
-      clearedBeforeId: 0,
-      clearedAt: null,
-      typing: {},
-      oldestId: null,
-      // Symmetric to oldestId. Only authoritative while detached or mid-page-
-      // down — otherwise messages[length-1].id is the implicit "newest" and
-      // this is left null. Set on around/after/latest responses.
-      newestId: null,
-      // Split of the old `hasMore` flag. hasMoreOlder drives the existing
-      // upward pager; hasMoreNewer is only meaningful while detached or while
-      // the user has paged past the live tail (not currently possible
-      // outside detach mode, but the field is here for future symmetry).
-      hasMoreOlder: true,
-      hasMoreNewer: false,
-      loadingHistory: false,
-      speakers: {},
-      // Detached mode: buffer is viewing a bounded historical slice around
-      // some anchor message id rather than the live tail. While detached,
-      // pushMessage drops fanOut (and counts via liveDuringDetach), activate
-      // skips its mark-read advance, and replaceBacklog (snapshot resume)
-      // is a no-op. The user exits via the StatusBar "Return to present"
-      // button (reattachToLive), via switching to another buffer, or via WS
-      // reconnect — all three reset the flag.
-      detached: false,
-      liveDuringDetach: 0,
-      pendingHistoryToken: null,
-      // Set when the buffer's slice was wiped on switch-away from detach.
-      // activate() consumes it on re-entry to fire a fresh latest fetch, so
-      // the user doesn't sit on a permanently empty buffer (the server only
-      // ships backlog unsolicited via sendSnapshot, so there's no other
-      // automatic source of history once the slice has been wiped).
-      pendingRefetch: false,
-    };
+    state.buffers[k] = makeBuffer(networkId, target);
   }
   return state.buffers[k];
 }
@@ -533,6 +538,41 @@ export const useBuffersStore = defineStore('buffers', {
     setMembers(networkId: number | string, target: string, members: BufferMember[]) {
       const buf = ensureBuffer(this, networkId, target);
       buf.members = members;
+    },
+
+    // --- Friends virtual buffer -------------------------------------------
+    // A real Buffer object stored under the flat :friends: key (sentinel
+    // networkId 0) so MessageList/MemberList render it wholesale. hasMoreOlder
+    // is false: the feed seeds the most recent page via REST and MessageList's
+    // WS history pager stays dormant (further scroll-back is a follow-up).
+    // Messages carry their ORIGINAL networkId/nick; only their text is prefixed
+    // with [network/#channel] by the friends store before ingest.
+    ensureFriendsBuffer(): Buffer {
+      if (!this.buffers[FRIENDS_KEY]) {
+        const buf = makeBuffer(0, FRIENDS_KEY);
+        buf.hasMoreOlder = false;
+        this.buffers[FRIENDS_KEY] = buf;
+      }
+      return this.buffers[FRIENDS_KEY];
+    },
+    // Replace the feed contents (initial load). Expects ascending-by-id rows.
+    setFriendMessages(messages: BufferMessage[]) {
+      const buf = this.ensureFriendsBuffer();
+      buf.messages = messages.slice(-MAX_PER_BUFFER);
+    },
+    // Append one live friend message (deduped by id). Live events are always
+    // newer than the loaded tail, so a plain append keeps id order.
+    pushFriendMessage(message: BufferMessage): boolean {
+      const buf = this.ensureFriendsBuffer();
+      const id = message.id;
+      if (id != null && buf.messages.some((m) => m.id === id)) return false;
+      buf.messages.push(message);
+      if (buf.messages.length > MAX_PER_BUFFER)
+        buf.messages.splice(0, buf.messages.length - MAX_PER_BUFFER);
+      return true;
+    },
+    setFriendMembers(members: BufferMember[]) {
+      this.ensureFriendsBuffer().members = members;
     },
     setTopic(networkId: number | string, target: string, topic: string | null) {
       const buf = ensureBuffer(this, networkId, target);

@@ -11,6 +11,23 @@
       :class="{ 'unread-bold': unreadBold }"
       @scroll="scheduleRecompute"
     >
+      <!-- Virtual buffers (cross-network). The :system: console stays the
+           sidebar logo button; the Friends buffer lives here. -->
+      <div class="virtual-buffers">
+        <div
+          class="net-head friends-row"
+          :class="{ active: isFriendsActive }"
+          title="Open Friends buffer"
+          @click="selectFriends"
+        >
+          <span class="indicator friends-icon"><i class="fa-solid fa-user-group"></i></span>
+          <span class="name">Friends</span>
+          <span v-if="onlineFriendCount > 0" class="badge" :title="`${onlineFriendCount} online`">{{
+            onlineFriendCount
+          }}</span>
+        </div>
+      </div>
+
       <div v-for="net in networks.networks" :key="net.id" class="net">
         <div
           class="net-head"
@@ -203,6 +220,8 @@ import {
 import draggable from 'vuedraggable';
 import { useNetworksStore, type Network, type PeerPresenceEntry } from '../stores/networks.js';
 import { useBuffersStore, type Buffer } from '../stores/buffers.js';
+import { useFriendsStore } from '../stores/friends.js';
+import { FRIENDS_KEY } from '../lib/virtualBuffers.js';
 import { useDraftStore } from '../stores/drafts.js';
 import { usePinsStore } from '../stores/pins.js';
 import { useChannelNotifyStore } from '../stores/channelNotify.js';
@@ -216,6 +235,7 @@ import {
 
 const networks = useNetworksStore();
 const buffers = useBuffersStore();
+const friends = useFriendsStore();
 const drafts = useDraftStore();
 const pins = usePinsStore();
 const channelNotify = useChannelNotifyStore();
@@ -409,6 +429,17 @@ function select(networkId: number, target: string): void {
 
 function isActive(networkId: number, target: string): boolean {
   return networks.activeKey === `${networkId}::${target}`;
+}
+
+const isFriendsActive = computed(() => networks.activeKey === FRIENDS_KEY);
+const onlineFriendCount = computed(
+  () => friends.contacts.filter((c) => friends.isOnline(c.id)).length,
+);
+function selectFriends(): void {
+  networks.activateVirtual(FRIENDS_KEY);
+  buffers.ensureFriendsBuffer();
+  // Lazy first load — the feed isn't fetched until the buffer is opened.
+  if (!friends.loaded) friends.loadFeed();
 }
 
 function stateClass(networkId: number): string {

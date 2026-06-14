@@ -52,9 +52,7 @@
              pre-filtered to this buffer (in:<target> on:<network>), members
              toggles the roster, the rest folds into the kebab. The *global*
              search / highlights / saved / uploads live on the list top bar. -->
-        <span v-if="isServerBuffer || isSystemConsole" class="title">{{
-          isSystemConsole ? 'System console' : bufferLabel
-        }}</span>
+        <span v-if="isServerBuffer || isVirtual" class="title">{{ bufferLabel }}</span>
         <span class="spacer"></span>
         <button class="icon" title="Search this buffer" @click="openSearch(true)">
           <i class="fa-solid fa-magnifying-glass"></i>
@@ -63,7 +61,7 @@
           <i class="fa-regular fa-bell"></i>
         </button>
         <button
-          v-if="isChannel"
+          v-if="isChannel || isFriendsBuffer"
           class="icon"
           title="Members"
           aria-label="Members"
@@ -85,7 +83,7 @@
       <SystemConsole v-if="isSystemConsole" />
       <MessageList v-else :pending-scroll-id="pendingScrollId" />
       <StatusBar compact />
-      <div v-if="!isSystemConsole" class="composer-host" :class="{ 'keyboard-open': keyboardOpen }">
+      <div v-if="!isVirtual" class="composer-host" :class="{ 'keyboard-open': keyboardOpen }">
         <MessageInput ref="messageInputRef" />
       </div>
     </section>
@@ -149,6 +147,7 @@
       :nick="nickNotes.editor.nick"
       :network-id="nickNotes.editor.networkId"
     />
+    <ConfigureFriendModal v-if="friends.editor.open" />
   </div>
 </template>
 
@@ -177,9 +176,11 @@ import ChannelListModal from '../components/ChannelListModal.vue';
 import RecentUploadsModal from '../components/RecentUploadsModal.vue';
 import SearchModal from '../components/SearchModal.vue';
 import NickNoteModal from '../components/NickNoteModal.vue';
+import ConfigureFriendModal from '../components/ConfigureFriendModal.vue';
 import UserProfileModal from '../components/UserProfileModal.vue';
 import ImageViewerModal from '../components/ImageViewerModal.vue';
 import { useNickNotesStore } from '../stores/nickNotes.js';
+import { useFriendsStore } from '../stores/friends.js';
 import { useWhoisStore } from '../stores/whois.js';
 import { useChannelListModal } from '../composables/useChannelListModal.js';
 import { useImageModal } from '../composables/useImageModal.js';
@@ -199,10 +200,13 @@ const {
   bufferLabel,
   topic,
   isSystemConsole,
+  isVirtual,
+  isFriendsBuffer,
 } = useActiveBuffer();
 const bufferActions = useBufferActions();
 const menu = useContextMenu();
 const nickNotes = useNickNotesStore();
+const friends = useFriendsStore();
 const whois = useWhoisStore();
 
 function openSystemConsole() {

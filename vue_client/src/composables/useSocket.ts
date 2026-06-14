@@ -17,6 +17,7 @@ import { useNicklistCollapseStore } from '../stores/nicklistCollapse.js';
 import { useChannelNotifyStore } from '../stores/channelNotify.js';
 import { useIgnoresStore } from '../stores/ignores.js';
 import { useNickNotesStore } from '../stores/nickNotes.js';
+import { useFriendsStore } from '../stores/friends.js';
 import { useWhoisStore } from '../stores/whois.js';
 import { useBookmarksStore } from '../stores/bookmarks.js';
 import { useSystemLogStore } from '../stores/systemLog.js';
@@ -97,6 +98,10 @@ function applyEvent(event: any): void {
       // server's read-state broadcast (fired after every countable event),
       // so we don't increment them here.
       if (!buffers.pushMessage(event)) break;
+      // Server stamps friend:true when the sender is on the watch list — file
+      // a prefixed copy into the cross-network :friends: buffer. Deduped above,
+      // so a resume-gap replay can't double-file it.
+      if (event.friend) useFriendsStore().applyLiveMessage(event);
       // Speakers feeds tab-complete and the nick-picker. Our own messages
       // would just clutter our own suggestions, so they don't count as
       // "people who recently spoke here."
@@ -115,6 +120,7 @@ function applyEvent(event: any): void {
     }
     case 'notice':
       if (!buffers.pushMessage(event)) break;
+      if (event.friend) useFriendsStore().applyLiveMessage(event);
       notifyForEvent(event);
       break;
     // For events that carry an id AND mutate buffer state (member list,
@@ -200,13 +206,32 @@ function applyEvent(event: any): void {
         event.userhost ?? null,
       );
       break;
-    case 'peer-presence':
+    case 'peer-presence': {
       networks.applyPeerPresence(event.networkId, event.nick, {
         state: event.state,
         stateAt: event.stateAt,
         awayMessage: event.awayMessage,
       });
+      const friends = useFriendsStore();
+      // Friend nicklist tint follows presence.
+      friends.refreshMembers();
+      // Came-online toast: only on a real online transition (the server emits
+      // 'online' only on offline→online), only for a watched contact whose
+      // notify_online flag is set, gated by the notifications setting.
+      if (event.state === 'online') {
+        const contact = friends.notifyContactFor(event.networkId, event.nick);
+        if (contact && useSettingsStore().effective('notifications.friend_online.enabled')) {
+          useToastsStore().push({
+            kind: 'notify',
+            title: `${contact.displayName} came online`,
+            body: '',
+            networkId: event.networkId,
+            target: event.nick,
+          });
+        }
+      }
       break;
+    }
     case 'motd':
     case 'error': {
       const decorated = { ...event, target: event.target || `:server:${event.networkId}` };
@@ -478,6 +503,18 @@ function handleMessage(raw: string): void {
   if (payload.kind === 'nick-note-updated') {
     const nickNotes = useNickNotesStore();
     nickNotes.applyUpdate(payload.networkId, payload.nick, payload.note || '', payload.updatedAt);
+    return;
+  }
+  if (payload.kind === 'contacts-snapshot') {
+    useFriendsStore().applySnapshot(payload.contacts || []);
+    return;
+  }
+  if (payload.kind === 'contact-updated') {
+    useFriendsStore().applyContactUpdated(payload.contact);
+    return;
+  }
+  if (payload.kind === 'contact-deleted') {
+    useFriendsStore().applyContactDeleted(payload.contactId);
     return;
   }
   if (payload.kind === 'bookmark-ids-snapshot') {

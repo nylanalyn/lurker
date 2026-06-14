@@ -986,6 +986,11 @@ export function attachWsHub(httpServer: HttpServer, sessionSecret: string) {
     // client store dedupes by id, so a redundant re-snapshot on visibility-
     // return resync is harmless.
     send(ws, { kind: 'system-log-snapshot', lines: systemLog.getRecent(userId) });
+    // Friends/contacts seed: the user's full contact list (display name, notify
+    // flag, per-network watch targets). User-level, so one message rather than a
+    // per-network field. Drives the Friends buffer nicklist + the came-online
+    // toast gate; the feed messages themselves load via REST /api/friends-feed.
+    send(ws, { kind: 'contacts-snapshot', contacts: ircManager.listContacts(userId) });
     const readState = listReadStateForUser(userId);
     const clearedState = listClearedStateForUser(userId);
     const closed = closedKeySetForUser(userId);
@@ -1540,6 +1545,37 @@ export function attachWsHub(httpServer: HttpServer, sessionSecret: string) {
           );
         } catch (_) {
           /* boundary already filtered bad networkId; ignore */
+        }
+        break;
+      }
+      case 'set-contact': {
+        // Verb owns validation, the per-(network,nick) uniqueness guard, the
+        // live MONITOR diff, and the fanOut. Thin delegator, same as nick-note.
+        try {
+          callVerb(
+            'set_contact',
+            { userId, scope: 'read-write', transport: 'ws' },
+            {
+              contactId: msg.contactId,
+              displayName: msg.displayName,
+              notifyOnline: msg.notifyOnline,
+              targets: msg.targets,
+            },
+          );
+        } catch (_) {
+          /* invalid input / not owned; ignore */
+        }
+        break;
+      }
+      case 'delete-contact': {
+        try {
+          callVerb(
+            'delete_contact',
+            { userId, scope: 'read-write', transport: 'ws' },
+            { contactId: msg.contactId },
+          );
+        } catch (_) {
+          /* not owned / gone; ignore */
         }
         break;
       }
