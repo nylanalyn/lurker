@@ -76,7 +76,9 @@ BOUNCER_PORT="6667"
 set -euo pipefail
 
 REPO_RAW="https://raw.githubusercontent.com/nylanalyn/lurker/main"
+REPO_TARBALL="https://github.com/nylanalyn/lurker/archive/refs/heads/main.tar.gz"
 LURKER_IMAGE="ghcr.io/nylanalyn/lurker:latest"
+LOCAL_LURKER_IMAGE="lurker-local:latest"
 INSTALL_DIR="/opt/lurker"
 DEPLOY_LOG="/var/log/lurker-deploy.log"
 
@@ -169,6 +171,15 @@ compose() {
   fi
 }
 
+write_image_overlay() {
+  local image="$1"
+  cat > docker-compose.image.yml <<YAML
+services:
+  lurker:
+    image: ${image}
+YAML
+}
+
 # ── Host setup ──────────────────────────────────────────────────────────────
 
 # The cheapest droplets ship 512MB–1GB of RAM; a small swapfile keeps the
@@ -233,11 +244,7 @@ deploy() {
   curl -fsSL -o docker-compose.caddy.yml "$REPO_RAW/docker-compose.caddy.yml"
   curl -fsSL -o Caddyfile "$REPO_RAW/deploy/Caddyfile"
 
-  cat > docker-compose.image.yml <<YAML
-services:
-  lurker:
-    image: ${LURKER_IMAGE}
-YAML
+  write_image_overlay "$LURKER_IMAGE"
 
   local compose_files="docker-compose.yml:docker-compose.image.yml:docker-compose.caddy.yml"
 
@@ -286,7 +293,18 @@ ADMIN_EMAIL=${ADMIN_EMAIL}
 COMPOSE_FILE=${compose_files}
 EOF
 
-  compose pull
+  if ! compose pull; then
+    log "Image pull failed. ghcr.io may not have a public ${LURKER_IMAGE} package yet."
+    log "Building Lurker locally from ${REPO_TARBALL} instead..."
+    rm -rf source lurker-main lurker-main.tar.gz
+    curl -fsSL -o lurker-main.tar.gz "$REPO_TARBALL"
+    tar -xzf lurker-main.tar.gz
+    mv lurker-main source
+    docker build -t "$LOCAL_LURKER_IMAGE" source
+    rm -rf source lurker-main.tar.gz
+    write_image_overlay "$LOCAL_LURKER_IMAGE"
+    compose pull caddy
+  fi
   compose up -d
   compose ps
 }

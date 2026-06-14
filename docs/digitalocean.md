@@ -15,7 +15,7 @@ You don't need the droplet's IP before creating it: the droplet boots and starts
 
 Passkeys and web push notifications are configured automatically — the deploy derives the WebAuthn and push settings from your domain and email — so you can enable them per device from Lurker's in-app settings without touching the server.
 
-This deploy script is pinned to `https://github.com/nylanalyn/lurker` and runs `ghcr.io/nylanalyn/lurker:latest`.
+This deploy script is pinned to `https://github.com/nylanalyn/lurker` and tries to run `ghcr.io/nylanalyn/lurker:latest`. If that GHCR package is not public or has not been published yet, the script falls back to building the Docker image locally from the fork's `main` branch on first boot.
 
 ## Optional IRC bouncer
 
