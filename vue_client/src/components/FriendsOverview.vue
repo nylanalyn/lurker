@@ -121,11 +121,11 @@ function searchAllQuery(c: Contact): string {
   return nicks.map((n) => `from:${n}`).join(' ');
 }
 
-// Format the nick by presence, mirroring DM rows in the buffer list: online =
-// normal, away = dimmed, offline = dimmed + italic. Primary nick is bold.
+// Dim the nick when away/offline (presence is also carried by the dot). No
+// bold/italic — kept plain.
 function nickClass(t: ContactTarget): Record<string, boolean> {
   const state = friends.presenceForTarget(t.networkId, t.nick);
-  return { away: state === 'away', offline: state === 'offline', primary: t.isPrimary };
+  return { away: state === 'away', offline: state === 'offline' };
 }
 </script>
 
@@ -158,9 +158,10 @@ function nickClass(t: ContactTarget): Record<string, boolean> {
   display: flex;
   flex-direction: column;
 }
-/* No card border — a thin separator between cards instead. */
+/* No card border — a thin separator between cards instead, with generous
+   breathing room on either side of it. */
 .card {
-  padding: var(--space-5) 0;
+  padding: var(--space-8) 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
@@ -222,19 +223,13 @@ function nickClass(t: ContactTarget): Record<string, boolean> {
 .target .net {
   color: var(--fg-muted);
 }
-/* Nick carries presence, mirroring DM rows in the buffer list. */
+/* Nick dims by presence (away/offline); the dot carries the rest. */
 .target .nick {
   color: var(--fg);
 }
-.target .nick.away {
-  color: var(--fg-muted);
-}
+.target .nick.away,
 .target .nick.offline {
   color: var(--fg-muted);
-  font-style: italic;
-}
-.target .nick.primary {
-  font-weight: 700;
 }
 .target .row-actions {
   display: inline-flex;
