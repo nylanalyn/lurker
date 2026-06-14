@@ -28,9 +28,6 @@
             :title="lurkerConnected ? 'Connected to lurker' : 'Disconnected from lurker'"
           ></span>
           <span class="name">FRIENDS</span>
-          <span v-if="onlineFriendCount > 0" class="badge" :title="`${onlineFriendCount} online`">{{
-            onlineFriendCount
-          }}</span>
         </div>
         <ul v-if="friends.contacts.length" class="channels">
           <li
@@ -481,9 +478,6 @@ function isActive(networkId: number, target: string): boolean {
 }
 
 const isFriendsActive = computed(() => networks.activeKey === FRIENDS_KEY);
-const onlineFriendCount = computed(
-  () => friends.contacts.filter((c) => friends.isOnline(c.id)).length,
-);
 function selectFriends(): void {
   networks.activateVirtual(FRIENDS_KEY);
   buffers.ensureFriendsBuffer();
