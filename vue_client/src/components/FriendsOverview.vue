@@ -23,16 +23,16 @@
         <div class="card-head">
           <span class="dot" :class="friends.primaryPresence(c.id)"></span>
           <span class="name">{{ c.displayName }}</span>
+          <span class="spacer"></span>
           <button
             type="button"
-            class="icon-btn edit"
+            class="icon-btn"
             title="Edit friend"
             aria-label="Edit friend"
             @click="friends.openEditorForContact(c)"
           >
             <i class="fa-solid fa-pencil"></i>
           </button>
-          <span class="spacer"></span>
           <button
             type="button"
             class="icon-btn"
@@ -175,10 +175,6 @@ function nickClass(t: ContactTarget): Record<string, boolean> {
 }
 .card-head .name {
   font-weight: 700;
-}
-/* Pencil hugs the name (editing the friend's name); search sits on the far right. */
-.card-head .edit {
-  margin-left: calc(-1 * var(--space-1));
 }
 .dot {
   width: 8px;
