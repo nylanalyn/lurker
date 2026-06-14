@@ -60,7 +60,26 @@
     </aside>
 
     <header v-if="isVirtual" class="topic">
-      <span class="buffer">{{ bufferLabel }}</span>
+      <div class="topic-meta">
+        <span class="buffer">{{ bufferLabel }}</span>
+      </div>
+      <div v-if="isFriendsBuffer" class="topic-actions">
+        <button
+          type="button"
+          class="link"
+          title="Add friend"
+          aria-label="Add friend"
+          @click="friends.openEditorNew()"
+        >
+          <i class="fa-solid fa-person-circle-plus"></i>
+        </button>
+        <span
+          class="member-count"
+          :title="`${friendCount} ${friendCount === 1 ? 'friend' : 'friends'}`"
+        >
+          <i class="fa-solid fa-users"></i> {{ friendCount }}
+        </span>
+      </div>
     </header>
     <header v-else-if="active" class="topic">
       <div class="topic-meta">
@@ -269,6 +288,7 @@ const settings = useSettingsStore();
 const nicklistCollapse = useNicklistCollapseStore();
 const nickNotes = useNickNotesStore();
 const friends = useFriendsStore();
+const friendCount = computed(() => friends.contacts.length);
 const whois = useWhoisStore();
 const channelNotify = useChannelNotifyStore();
 

@@ -54,10 +54,31 @@
              search / highlights / saved / uploads live on the list top bar. -->
         <span v-if="isServerBuffer || isVirtual" class="title">{{ bufferLabel }}</span>
         <span class="spacer"></span>
-        <button class="icon" title="Search this buffer" @click="openSearch(true)">
+        <template v-if="isFriendsBuffer">
+          <button
+            class="icon"
+            title="Add friend"
+            aria-label="Add friend"
+            @click="friends.openEditorNew()"
+          >
+            <i class="fa-solid fa-person-circle-plus"></i>
+          </button>
+          <span
+            class="friend-count"
+            :title="`${friendCount} ${friendCount === 1 ? 'friend' : 'friends'}`"
+          >
+            <i class="fa-solid fa-users"></i> {{ friendCount }}
+          </span>
+        </template>
+        <button v-if="!isVirtual" class="icon" title="Search this buffer" @click="openSearch(true)">
           <i class="fa-solid fa-magnifying-glass"></i>
         </button>
-        <button class="icon" title="Highlights in this buffer" @click="openHighlights(true)">
+        <button
+          v-if="!isVirtual"
+          class="icon"
+          title="Highlights in this buffer"
+          @click="openHighlights(true)"
+        >
           <i class="fa-regular fa-bell"></i>
         </button>
         <button
@@ -210,6 +231,7 @@ const bufferActions = useBufferActions();
 const menu = useContextMenu();
 const nickNotes = useNickNotesStore();
 const friends = useFriendsStore();
+const friendCount = computed(() => friends.contacts.length);
 const whois = useWhoisStore();
 
 function openSystemConsole() {
@@ -467,6 +489,12 @@ useChatBootstrap({ onJump: onJumpToMessage });
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+}
+.friend-count {
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+  padding: 0 var(--space-2);
+  white-space: nowrap;
 }
 .spacer {
   flex: 1;

@@ -13,17 +13,6 @@
 
 <template>
   <div class="friends-overview">
-    <header class="ov-head">
-      <span class="count"
-        >{{ friends.contacts.length }}
-        {{ friends.contacts.length === 1 ? 'friend' : 'friends' }}</span
-      >
-      <span class="spacer"></span>
-      <button type="button" class="btn-secondary" @click="friends.openEditorNew()">
-        <i class="fa-solid fa-plus"></i> Add Friend
-      </button>
-    </header>
-
     <p v-if="!friends.contacts.length" class="empty">
       No friends yet. Add someone from a nick's menu (channel member list, DM, or profile), or with
       “Add Friend” above.
@@ -116,25 +105,22 @@ function summary(c: Contact): string {
   flex-direction: column;
   gap: var(--space-6);
 }
-.ov-head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-}
-.count {
+.empty {
   color: var(--fg-muted);
+  margin: 0;
+  max-width: 30rem;
 }
 .spacer {
   flex: 1;
 }
-.empty {
-  color: var(--fg-muted);
-  margin: 0;
-}
+/* Mobile-sized column, left-aligned (cap width, let the right margin grow) —
+   like the settings panes, so cards don't stretch across a wide window. */
 .cards {
   list-style: none;
-  margin: 0;
+  margin: 0 auto 0 0;
   padding: 0;
+  width: 100%;
+  max-width: 30rem;
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
