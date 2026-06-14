@@ -1,4 +1,4 @@
-name: ghcr.io/amiantos/lurker
+name: ghcr.io/nylanalyn/lurker
 
 on:
   push:
@@ -11,6 +11,7 @@ on:
       - 'Dockerfile'
       - 'package.json'
       - 'package-lock.json'
+      - '.github/workflows/docker-publish.yml'
   release:
     types: [published]
   workflow_dispatch:
@@ -20,7 +21,11 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/lurker
+  IMAGE_NAME: nylanalyn/lurker
+
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-push:

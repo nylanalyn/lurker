@@ -17,6 +17,8 @@ Passkeys and web push notifications are configured automatically — the deploy 
 
 This deploy script is pinned to `https://github.com/nylanalyn/lurker` and tries to run `ghcr.io/nylanalyn/lurker:latest`. If that GHCR package is not public or has not been published yet, the script falls back to building the Docker image locally from the fork's `main` branch on first boot.
 
+For faster future deploys, enable GitHub Actions on the fork and manually run the `ghcr.io/nylanalyn/lurker` workflow once from the Actions tab. After it publishes, open the package settings for `nylanalyn/lurker` on GitHub Packages and make the container package public so droplets can pull it without logging in.
+
 ## Optional IRC bouncer
 
 To let WeeChat/Irssi connect directly to Lurker as an IRC bouncer, set `ENABLE_BOUNCER="true"` near the top of the deploy script. The default public TCP port is `6667`; change `BOUNCER_PORT` if you need a different one.
