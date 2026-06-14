@@ -22,17 +22,15 @@
       <li v-for="c in friends.contacts" :key="c.id" class="card">
         <div class="card-head">
           <span class="dot" :class="friends.primaryPresence(c.id)"></span>
-          <span class="name">{{ c.displayName }}</span>
-          <span class="spacer"></span>
           <button
             type="button"
-            class="icon-btn"
+            class="name"
             title="Edit friend"
-            aria-label="Edit friend"
             @click="friends.openEditorForContact(c)"
           >
-            <i class="fa-solid fa-pencil"></i>
+            {{ c.displayName }}
           </button>
+          <span class="spacer"></span>
           <button
             type="button"
             class="icon-btn"
@@ -158,6 +156,13 @@ function nickClass(t: ContactTarget): Record<string, boolean> {
   display: flex;
   flex-direction: column;
 }
+/* On mobile the chat pane is already a narrow full-width column, so drop the
+   desktop reading-column cap and let the cards fill it. */
+@media (max-width: 768px) {
+  .cards {
+    max-width: none;
+  }
+}
 /* No card border — a thin separator between cards instead, with generous
    breathing room on either side of it. */
 .card {
@@ -178,8 +183,24 @@ function nickClass(t: ContactTarget): Record<string, boolean> {
   align-items: center;
   gap: var(--space-3);
 }
+/* The friend's name is the edit affordance — a buffer-style link: normal text,
+   pointer + hover underline, no pencil icon. */
 .card-head .name {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
   font-weight: 700;
+  color: var(--fg);
+  cursor: pointer;
+  text-align: left;
+}
+.card-head .name:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.card-head .name:focus-visible {
+  outline: 2px solid var(--accent);
 }
 .dot {
   width: 8px;
