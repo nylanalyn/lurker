@@ -43,7 +43,10 @@ let socket: WebSocket | null = null;
 // them at once — used by resetSocket to strip handlers before closing so the
 // 'close' reconnect arm can't fire.
 let socketListeners: AbortController | null = null;
-const connected = ref(false);
+// Module-level singleton: the live WS link to the lurker service. Exported so
+// read-only consumers (e.g. the FRIENDS status dot) can reflect it without
+// calling useSocket() (which would re-register the connect lifecycle).
+export const connected = ref(false);
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 const openHandlers = new Set<() => void>();
 // Outstanding send/action ACKs keyed by clientId. Resolver is called with

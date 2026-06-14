@@ -22,7 +22,11 @@
           title="Open Friends feed"
           @click="selectFriends"
         >
-          <span class="indicator friends-icon"><i class="fa-solid fa-user-group"></i></span>
+          <span
+            class="indicator"
+            :class="lurkerConnected ? 'good' : 'bad'"
+            :title="lurkerConnected ? 'Connected to lurker' : 'Disconnected from lurker'"
+          ></span>
           <span class="name">FRIENDS</span>
           <span v-if="onlineFriendCount > 0" class="badge" :title="`${onlineFriendCount} online`">{{
             onlineFriendCount
@@ -35,7 +39,7 @@
             :class="friendRowClasses(c)"
             :title="`Open DM with ${c.displayName}`"
             @click="openFriendDm(c)"
-            @contextmenu.prevent="editFriend(c)"
+            @contextmenu.prevent="openFriendActions($event, c)"
           >
             <span class="label">{{ c.displayName }}</span>
             <span
@@ -51,6 +55,16 @@
               >●</span
             >
             <span v-if="friendUnread(c) > 0" class="badge">{{ unreadLabel(friendUnread(c)) }}</span>
+            <button
+              type="button"
+              class="row-actions"
+              title="Friend actions"
+              aria-label="Friend actions"
+              @click.stop="openFriendActions($event, c)"
+              @contextmenu.stop.prevent
+            >
+              <i class="fa-solid fa-ellipsis-vertical"></i>
+            </button>
           </li>
         </ul>
       </div>
@@ -249,12 +263,14 @@ import { useNetworksStore, type Network, type PeerPresenceEntry } from '../store
 import { useBuffersStore, type Buffer } from '../stores/buffers.js';
 import { useFriendsStore, primaryTargetOf, type Contact } from '../stores/friends.js';
 import { FRIENDS_KEY } from '../lib/virtualBuffers.js';
+import { connected as lurkerConnected } from '../composables/useSocket.js';
 import { useDraftStore } from '../stores/drafts.js';
 import { usePinsStore } from '../stores/pins.js';
 import { useChannelNotifyStore } from '../stores/channelNotify.js';
 import { useSettingsStore } from '../stores/settings.js';
 import { useBufferActions } from '../composables/useBufferActions.js';
 import { useNetworkActions } from '../composables/useNetworkActions.js';
+import { useContextMenu } from '../composables/useContextMenu.js';
 import {
   isPeerOffline as derivePeerOffline,
   isPeerAway as derivePeerAway,
@@ -269,6 +285,7 @@ const channelNotify = useChannelNotifyStore();
 const settings = useSettingsStore();
 const bufferActions = useBufferActions();
 const networkActions = useNetworkActions();
+const friendMenu = useContextMenu();
 
 function isNetworkConnected(net: Network): boolean {
   return networks.states[net.id]?.state === 'connected';
@@ -519,8 +536,28 @@ function friendUnread(c: Contact): number {
 function friendHighlights(c: Contact): number {
   return friendDmBuffer(c)?.highlighted ?? 0;
 }
-function editFriend(c: Contact): void {
-  friends.openEditorForContact(c);
+// Kebab / right-click menu on a friend row. Edit + remove, mirroring how DM
+// rows expose buffer actions (and giving a discoverable path beyond right-click).
+function openFriendActions(e: MouseEvent, c: Contact): void {
+  const el = e.currentTarget as Element;
+  const rect = el.getBoundingClientRect();
+  friendMenu.open(
+    [
+      {
+        label: 'Edit Friend…',
+        icon: 'fa-solid fa-user-pen',
+        onClick: () => friends.openEditorForContact(c),
+      },
+      {
+        label: 'Remove Friend',
+        icon: 'fa-solid fa-user-minus',
+        onClick: () => friends.removeContact(c.id),
+      },
+    ],
+    rect.right,
+    rect.bottom,
+    el,
+  );
 }
 // A friend's primary DM is shown under FRIENDS, so hide it from its real
 // network's buffer list (dedupe).
