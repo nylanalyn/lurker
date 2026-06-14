@@ -242,7 +242,9 @@ describe('formatWhoisRaw', () => {
         hostname: 'host.example',
         channels: '#a #b',
       }),
-    ).toBe('WHOIS alice: {"nick":"alice","ident":"a","hostname":"host.example","channels":"#a #b"}');
+    ).toBe(
+      'WHOIS alice: {"nick":"alice","ident":"a","hostname":"host.example","channels":"#a #b"}',
+    );
   });
 
   it('returns null for missing nick', () => {

@@ -2112,9 +2112,7 @@ export function computeFallbackNick(
   return `${base}${attemptIndex + 1}`;
 }
 
-export function formatWhoisRaw(
-  whois: Record<string, unknown> | null | undefined,
-): string | null {
+export function formatWhoisRaw(whois: Record<string, unknown> | null | undefined): string | null {
   if (!whois) return null;
   const nick = whois.nick;
   if (typeof nick !== 'string' || !nick) return null;
