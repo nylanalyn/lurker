@@ -252,6 +252,7 @@ export class BouncerSession {
   private auth: AuthContext | null = null;
   private registered = false;
   private closed = false;
+  private sentNamesFor = new Set<string>();
   private pendingSelfEchoes: Array<{ type: string; target: string; text: string }> = [];
   private boundEvent = (event: unknown) => this.onManagerEvent(event);
 
@@ -501,6 +502,7 @@ export class BouncerSession {
     const event = raw as Record<string, unknown>;
     if (event.userId !== this.auth.userId || event.networkId !== this.auth.network.id) return;
     if (event.type === 'names' && typeof event.target === 'string') {
+      if (this.sentNamesFor.has(event.target.toLowerCase())) return;
       const members = Array.isArray(event.members)
         ? event.members
             .map((m) => m as Record<string, unknown>)
@@ -559,6 +561,7 @@ export class BouncerSession {
       command: '366',
       params: [nick, channel.name, 'End of /NAMES list.'],
     });
+    this.sentNamesFor.add(channel.name.toLowerCase());
   }
 
   private localNotice(text: string): void {

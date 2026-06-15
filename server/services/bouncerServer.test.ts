@@ -250,6 +250,20 @@ describe('bouncer behavior', () => {
     manager.emit('event', {
       userId: user.id,
       networkId: network.id,
+      type: 'names',
+      target: '#test',
+      members: [
+        { nick: 'liveNick', modes: ['o'] },
+        { nick: 'bob', modes: ['v'] },
+      ],
+    });
+    expect(countOccurrences(received.join(''), ' 353 liveNick = #test ')).toBe(
+      countOccurrences(namesBefore, ' 353 liveNick = #test '),
+    );
+
+    manager.emit('event', {
+      userId: user.id,
+      networkId: network.id,
       type: 'message',
       target: '#test',
       nick: 'carol',
