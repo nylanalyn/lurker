@@ -2110,8 +2110,9 @@ function handleCommand(line: string, networkId: number, target: string): boolean
 <style scoped>
 .input {
   display: flex;
-  /* flex-start so the prompt label and send button stay pinned to the
-     first line as the textarea grows downward across multiple lines. */
+  /* flex-start so the prompt label stays pinned to the first line as the
+     textarea grows downward across multiple lines. The send button overrides
+     this (align-self: flex-end) to track the bottom of the input area. */
   align-items: flex-start;
   gap: 1ch;
   padding: var(--space-4) var(--space-6);
@@ -2164,6 +2165,9 @@ function handleCommand(line: string, networkId: number, target: string): boolean
   padding: 0 var(--space-1);
   font-size: inherit;
   line-height: 1.4;
+  /* Stick to the bottom of the input area as the textarea grows multi-line,
+     instead of riding the first line with the prompt (issue #295). */
+  align-self: flex-end;
 }
 .send-btn:hover:not(:disabled) {
   color: var(--accent);
