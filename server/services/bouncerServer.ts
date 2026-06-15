@@ -328,6 +328,9 @@ export class BouncerSession {
           );
         }
         break;
+      case 'NAMES':
+        this.handleNames(line);
+        break;
       case 'NICK':
       case 'MODE':
       case 'WHOIS':
@@ -458,6 +461,26 @@ export class BouncerSession {
     if (!this.deps.manager.notice(this.auth!.userId, this.auth!.network.id, target, text)) {
       this.pendingSelfEchoes.length = pendingLen;
       this.localNotice(`Network ${this.auth!.network.name} is not connected; NOTICE was not sent.`);
+    }
+  }
+
+  private handleNames(line: IrcLine): void {
+    const requested = splitCsv(line.params[0]);
+    const snapshot = snapshotFor(this.connection());
+    const channels =
+      requested.length > 0
+        ? requested
+        : snapshot.channels.length > 0
+          ? snapshot.channels.map((ch) => ch.name)
+          : ['*'];
+    for (const name of channels) {
+      const channel =
+        snapshot.channels.find((ch) => ch.name.toLowerCase() === name.toLowerCase())?.name || name;
+      this.write({
+        prefix: SERVER_NAME,
+        command: '366',
+        params: [this.currentNick(), channel, 'End of /NAMES list.'],
+      });
     }
   }
 

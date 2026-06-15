@@ -235,6 +235,18 @@ describe('bouncer behavior', () => {
     expect(raw).toHaveBeenCalledWith('WHOIS bob');
     expect(received.join('')).toContain('PONG abc');
 
+    const namesBefore = received.join('');
+    socket.clientWrite('NAMES #test\r\n');
+    await waitFor(() => received.join('') !== namesBefore);
+    const namesAfter = received.join('');
+    expect(raw).not.toHaveBeenCalledWith('NAMES #test');
+    expect(countOccurrences(namesAfter, ' 353 liveNick = #test ')).toBe(
+      countOccurrences(namesBefore, ' 353 liveNick = #test '),
+    );
+    expect(countOccurrences(namesAfter, ' 366 liveNick #test ')).toBe(
+      countOccurrences(namesBefore, ' 366 liveNick #test ') + 1,
+    );
+
     manager.emit('event', {
       userId: user.id,
       networkId: network.id,
@@ -332,6 +344,10 @@ describe('event translation', () => {
 
 function once(emitter: EventEmitter, event: string): Promise<void> {
   return new Promise((resolve) => emitter.once(event, () => resolve()));
+}
+
+function countOccurrences(haystack: string, needle: string): number {
+  return haystack.split(needle).length - 1;
 }
 
 class FakeSocket extends EventEmitter {
