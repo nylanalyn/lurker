@@ -386,6 +386,10 @@ function onImagePointerEnd(event: PointerEvent): void {
   dragStart = null;
   isDragging.value = false;
   pinchOccurred = false;
+  // suppressNextClick only gates the mouse click-after-drag path; clear it when a
+  // touch gesture ends so a stale flag can't swallow the first trackpad/mouse
+  // click on a hybrid device.
+  if (event.pointerType === 'touch') suppressNextClick.value = false;
 
   if (wasTap) handleTap(event);
 }
