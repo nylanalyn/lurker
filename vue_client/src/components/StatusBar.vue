@@ -385,7 +385,7 @@ function onReturnToPresent() {
 }
 
 const unreadArrow = computed(() => (unreadAnchor.value === 'down' ? '↓' : '↑'));
-const jumpUnreadLabel = computed(() => `Jump to unread ${unreadArrow.value}`);
+const jumpUnreadLabel = computed(() => `Unread ${unreadArrow.value}`);
 
 function onJumpToUnread() {
   requestScrollToUnread();
