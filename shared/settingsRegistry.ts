@@ -1050,6 +1050,40 @@ export const REGISTRY: readonly SettingOption[] = Object.freeze([
       'The per-friend toggle (in the Configure Friend dialog) is the opt-in; this ' +
       'is the global master.',
   },
+  {
+    key: 'notifications.friend_online.sound.enabled',
+    label: 'Friend online sound',
+    category: 'notifications',
+    group: 'alerts',
+    type: 'bool',
+    default: false,
+    description:
+      'Play a short sound when a friend comes online. Off by default. Dependent on ' +
+      'notifications.friend_online.enabled.',
+  },
+  {
+    key: 'notifications.friend_online.sound.choice',
+    label: 'Friend online sound choice',
+    category: 'notifications',
+    group: 'alerts',
+    type: 'enum',
+    choices: ['ping', 'chime', 'pop', 'beep', 'knock', 'plink'],
+    default: 'knock',
+    description:
+      'Which bundled sound to play when a friend comes online. Distinct default ' +
+      'from the highlight/DM sounds so a friend signing on is recognizable by ear.',
+  },
+  {
+    key: 'notifications.friend_online.sound.volume',
+    label: 'Friend online sound volume',
+    category: 'notifications',
+    group: 'alerts',
+    type: 'int',
+    min: 0,
+    max: 100,
+    default: 60,
+    description: 'Playback volume for the friend-online sound, 0–100.',
+  },
 
   {
     key: 'notifications.always_notify.enabled',

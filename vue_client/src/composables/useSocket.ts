@@ -23,7 +23,7 @@ import { useBookmarksStore } from '../stores/bookmarks.js';
 import { useSystemLogStore } from '../stores/systemLog.js';
 import { useDataExportStore } from '../stores/dataExport.js';
 import { useToastsStore } from '../stores/toasts.js';
-import { notifyForEvent } from './useHighlightNotifier.js';
+import { notifyForEvent, playSound } from './useHighlightNotifier.js';
 
 export interface AckResult {
   ok: boolean;
@@ -216,22 +216,46 @@ function applyEvent(event: any): void {
         awayMessage: event.awayMessage,
       });
       const friends = useFriendsStore();
-      // Came-online toast: only on a real offline→online transition. The server
-      // also reports current state on the MONITOR seed and whenever a nick is
-      // freshly added to the watch (RPL_MONONLINE with no prior presence row),
+      // Came-online notification: only on a real offline→online transition. The
+      // server also reports current state on the MONITOR seed and whenever a nick
+      // is freshly added to the watch (RPL_MONONLINE with no prior presence row),
       // so keying purely off `state === 'online'` would fire when you add an
       // already-online friend or on a first connect. Gate on the prior client
       // state being 'offline' so only genuine transitions notify.
-      if (event.state === 'online' && prevPeerState === 'offline') {
+      //
+      // In-app toast + sound only when the tab is visible — the hidden case is
+      // the server-side push's job (wsHub.maybePushFriendOnline), gated on the
+      // same Page Visibility signal, so exactly one of the two fires.
+      if (
+        event.state === 'online' &&
+        prevPeerState === 'offline' &&
+        typeof document !== 'undefined' &&
+        !document.hidden
+      ) {
         const contact = friends.notifyContactFor(event.networkId, event.nick);
-        if (contact && useSettingsStore().effective('notifications.friend_online.enabled')) {
+        const settings = useSettingsStore();
+        if (contact && settings.effective('notifications.friend_online.enabled')) {
+          // Name the nick that actually signed on when it differs from the
+          // display name — for a friend watched under several nicks/alts, "(as
+          // nostimo)" says which identity, and matches the dot in the breakdown.
+          const nick = String(event.nick);
+          const asNick =
+            nick && nick.toLowerCase() !== contact.displayName.toLowerCase() ? ` (as ${nick})` : '';
           useToastsStore().push({
             kind: 'notify',
-            title: `${contact.displayName} came online`,
+            title: `${contact.displayName} came online${asNick}`,
             body: '',
             networkId: event.networkId,
             target: event.nick,
           });
+          // Optional sound, same enable/choice/volume model as the DM/highlight/
+          // always-notify toasts (shared playSound helper).
+          if (settings.effective('notifications.friend_online.sound.enabled')) {
+            playSound(
+              (settings.effective('notifications.friend_online.sound.choice') as string) || 'knock',
+              settings.effective('notifications.friend_online.sound.volume'),
+            );
+          }
         }
       }
       break;

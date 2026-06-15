@@ -81,6 +81,15 @@ const findContactByTargetStmt = db.prepare(`
   WHERE c.user_id = ? AND ct.network_id = ? AND ct.nick = ? COLLATE NOCASE
 `);
 
+const notifyContactByTargetStmt = db.prepare(`
+  SELECT c.id AS id, c.display_name AS displayName
+  FROM contact_targets ct
+  JOIN contacts c ON c.id = ct.contact_id
+  WHERE c.user_id = ? AND ct.network_id = ? AND ct.nick = ? COLLATE NOCASE
+    AND c.notify_online = 1
+  LIMIT 1
+`);
+
 function rowToContact(row: {
   id: number;
   displayName: string;
@@ -195,7 +204,7 @@ export function listContactsForUser(userId: number): ContactRecord[] {
   return contacts;
 }
 
-/** [{ contactId, nick }] for a network — hydrates a connection's trackedFriends. */
+/** [{ contactId, nick }] for a network — hydrates a connection's friend watch. */
 export function listTargetsForNetwork(
   networkId: number,
 ): Array<{ contactId: number; nick: string }> {
@@ -213,4 +222,17 @@ export function findContactIdByTarget(
     | { contactId: number }
     | undefined;
   return row?.contactId ?? null;
+}
+
+/** The notify-on-online contact watching (network, nick) for this user, or null.
+ *  Drives the server-side came-online push (fired when no client is visible). */
+export function findNotifyContactForTarget(
+  userId: number,
+  networkId: number,
+  nick: string,
+): { id: number; displayName: string } | null {
+  const row = notifyContactByTargetStmt.get(userId, networkId, nick) as
+    | { id: number; displayName: string }
+    | undefined;
+  return row ?? null;
 }

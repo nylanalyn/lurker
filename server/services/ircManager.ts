@@ -614,7 +614,7 @@ class IrcManager extends EventEmitter {
 
   // Track newly-added targets and untrack removed ones on the matching live
   // connection (keyed by network+lowernick). Targets present in both are left
-  // alone — their trackedFriends mapping is unchanged.
+  // alone — their friend watch is unchanged.
   private applyContactTargetDiff(
     userId: number,
     contactId: number,
