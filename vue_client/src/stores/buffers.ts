@@ -863,6 +863,11 @@ export const useBuffersStore = defineStore('buffers', {
       userhost: string | null = null,
     ) {
       if (!nick) return;
+      // Cancel any pending expiry timer first, unconditionally: the buffer may
+      // have been closed while a timer was still pending, and the early-return
+      // below would otherwise strand that timer until it expires on its own.
+      // clearTypingTimer is a no-op when there's no timer for this nick.
+      clearTypingTimer(networkId, target, nick);
       // Only reflect typing inside a buffer that already exists. A typing tag
       // (TAGMSG +typing) must never materialize a phantom DM buffer for a peer
       // who never actually messages us — the incoming PRIVMSG is what opens the
@@ -871,7 +876,6 @@ export const useBuffersStore = defineStore('buffers', {
       // they say something real.
       const buf = this.buffers[key(networkId, target)];
       if (!buf) return;
-      clearTypingTimer(networkId, target, nick);
 
       if (state === 'done') {
         delete buf.typing[nick];
