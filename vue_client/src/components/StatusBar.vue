@@ -13,15 +13,22 @@
             ><span v-if="networkLabel" class="net">{{ networkLabel }}/</span
             ><span class="name">{{ targetLabel }}</span></template
           ><span v-else class="name">{{ networkLabel }}</span
-          ><span v-if="modeSuffix" class="modes">{{ modeSuffix }}</span></span
+          ><span v-if="modeSuffix && !compact" class="modes">{{ modeSuffix }}</span></span
         >
         <!-- Jump-to-unread. Scrolls (usually up) to the pinned unread divider
            when it's off-screen and the user hasn't scrolled it into view yet
            this visit. Renders in both modes — catching up matters as much on
            mobile. -->
-        <button v-if="unreadAnchor" class="seg jump-unread" type="button" @click="onJumpToUnread">
-          Jump to unread {{ unreadArrow }}
-        </button>
+        <!-- Label bound via v-text (not inline text) so the formatter can't put
+             content on its own indented line, whose newline would render as a
+             stray leading space after the `|` separator pseudo-element. -->
+        <button
+          v-if="unreadAnchor"
+          class="seg jump-unread"
+          type="button"
+          v-text="jumpUnreadLabel"
+          @click="onJumpToUnread"
+        ></button>
         <!-- Return-to-present: the single downward affordance. Shows whenever the
            buffer is detached (viewing a historical slice) OR the user has
            scrolled up off the live tail; the count badge reflects whichever
@@ -32,11 +39,9 @@
           v-if="showPresent"
           class="seg return-present"
           type="button"
+          v-text="returnPresentLabel"
           @click="onReturnToPresent"
-        >
-          Return to present<template v-if="presentCount > 0"> ({{ presentCount }} new)</template>
-          ↓
-        </button>
+        ></button>
         <span v-if="peerStatusLabel" class="seg peer-status" :class="peerStatusClass">{{
           peerStatusLabel
         }}</span>
@@ -46,28 +51,40 @@
         }}</span>
         <span v-if="splitLabel" class="seg split" :class="splitClass">{{ splitLabel }}</span>
         <span v-if="typingSegments.length" class="seg typing"
-          >Typing:
+          ><i class="fa-regular fa-keyboard" role="img" aria-label="Typing" title="Typing"></i>
           <template v-for="(seg, i) in typingSegments" :key="i"
             ><span :style="seg.color ? { color: seg.color } : null">{{ seg.text }}</span></template
           ></span
         >
       </div>
       <div class="bar-tools">
+        <!-- No @mousedown.prevent here (unlike the palette/send buttons): this
+             opens the native iOS file picker, which dismisses the soft keyboard
+             no matter what. Preventing the tap-blur only delays that dismissal a
+             beat — keyboard stays up, then drops as the picker sheet animates in
+             — which reads as jank. Letting the tap blur gives one clean
+             dismissal instead. -->
         <button
           type="button"
           class="tool-btn"
           :disabled="!sendable"
           title="upload image"
+          aria-label="upload image"
           @click="onPickFile"
         >
           <i class="fa-solid fa-paperclip"></i>
         </button>
+        <!-- @mousedown.prevent keeps the composer focused (and the iOS keyboard
+             up): this opens the in-app colour picker overlay, not a native
+             sheet, so the keyboard should stay — same affordance as send. -->
         <button
           v-if="showFormatButton"
           type="button"
           class="tool-btn"
           :disabled="!sendable"
           title="mIRC formatting (Cmd/Ctrl+B/I/U for bold/italic/underline)"
+          aria-label="mIRC formatting"
+          @mousedown.prevent
           @click="onToggleColorPicker"
         >
           <i class="fa-solid fa-palette"></i>
@@ -359,6 +376,13 @@ const showPresent = computed(() => detached.value || !stuckToBottom.value);
 // Count badge: messages that arrived while detached, else the live unread-
 // below count tracked by the scroll state.
 const presentCount = computed(() => (detached.value ? liveDuringDetach.value : newBelow.value));
+// Built as a single string (and bound with v-text in the template) rather than
+// inline template text so no formatter-injected indentation whitespace can
+// leak into the rendered label — see the button markup for why that matters.
+const returnPresentLabel = computed(() => {
+  const count = presentCount.value > 0 ? ` (${presentCount.value} new)` : '';
+  return `Return${count} ↓`;
+});
 
 function onReturnToPresent() {
   const buf = buffer.value;
@@ -373,6 +397,7 @@ function onReturnToPresent() {
 }
 
 const unreadArrow = computed(() => (unreadAnchor.value === 'down' ? '↓' : '↑'));
+const jumpUnreadLabel = computed(() => `Unread ${unreadArrow.value}`);
 
 function onJumpToUnread() {
   requestScrollToUnread();
@@ -422,6 +447,12 @@ function onToggleColorPicker() {
   flex: 1 1 auto;
   white-space: nowrap;
   overflow: hidden;
+  /* Segments live here now (the send-button PR moved them out of `.bar`).
+     The `|` separators get their right-side space from the `::before`
+     margin, but rely on this gap for the matching left-side space — without
+     it the pipe sits flush against the previous segment and floats off the
+     next one. Mirrors the `gap` `.bar` carries between main + tools. */
+  gap: 1ch;
 }
 .bar-tools {
   display: flex;
@@ -441,8 +472,12 @@ function onToggleColorPicker() {
 .seg.clock {
   color: var(--fg-muted);
 }
+/* Shrink-only (grow: 0): the buffer name takes its natural width and lets the
+   segments after it (peer-status/lag/upload/split/typing) pack immediately to
+   its right — left-aligned — instead of being shoved against the tool buttons.
+   It still shrinks + ellipsis-truncates when the row is too tight to fit. */
 .seg.buffer {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   color: var(--fg-muted);
   min-width: 0;
   overflow: hidden;
@@ -487,6 +522,11 @@ function onToggleColorPicker() {
 }
 .seg.split.bad {
   color: var(--bad);
+}
+/* Keyboard glyph standing in for the old "Typing:" label — nudge it off the
+   first nick (a bare inline space sits too tight against the icon). */
+.seg.typing i {
+  margin-right: 0.5ch;
 }
 .seg.jump-unread,
 .seg.return-present {
