@@ -37,6 +37,29 @@ function key(networkId: number | string, target: string) {
   return `${networkId}::${target}`;
 }
 
+// Resolve the storage key of an already-open buffer for (networkId, target),
+// folding case so an inconsistently-cased name reuses the open buffer instead
+// of forking a second one. IRC targets are case-insensitive and some servers
+// hand us divergent casing (#289 for channels; #327 for live DMs), so exact-key
+// identity alone forks duplicates. Exact key is tried first as the common fast
+// path; the O(n) folded scan only runs on a miss. The flat ':'-sentinels
+// (`:server:`, `:friends:`…) are fixed keys — exact only, never folded.
+function resolveExistingKey(
+  buffers: Record<string, Buffer>,
+  networkId: number | string,
+  target: string,
+): string | null {
+  const exact = key(networkId, target);
+  if (buffers[exact]) return exact;
+  if (target.startsWith(':')) return null;
+  const nid = Number(networkId);
+  const lower = target.toLowerCase();
+  for (const [k, b] of Object.entries(buffers)) {
+    if (b.networkId === nid && b.target.toLowerCase() === lower) return k;
+  }
+  return null;
+}
+
 function typingKey(networkId: number | string, target: string, nick: string) {
   return `${networkId}::${target}::${nick.toLowerCase()}`;
 }
@@ -61,6 +84,11 @@ export interface BufferMember {
 }
 
 export interface TypingEntry {
+  // Display nick as it arrived on the wire. The map that holds these entries is
+  // keyed by the *lowercased* nick (so a peer who sends case-variant tags, or
+  // runs a case-only /nick, occupies one entry instead of stranding a ghost),
+  // so the original case has to ride along here for rendering.
+  nick: string;
   state: string;
   expiresAt: number;
   userhost: string | null;
@@ -179,10 +207,14 @@ function ensureBuffer(
   networkId: number | string,
   target: string,
 ): Buffer {
+  // Resolve case-insensitively before creating: a DM/channel already open under
+  // a different casing is the same buffer (#327), so reuse it rather than fork a
+  // second entry. Only materialize when nothing exists under any casing — and
+  // then under the target's own casing, so the first writer's case is canonical.
+  const existing = resolveExistingKey(state.buffers, networkId, target);
+  if (existing) return state.buffers[existing];
   const k = key(networkId, target);
-  if (!state.buffers[k]) {
-    state.buffers[k] = makeBuffer(networkId, target);
-  }
+  state.buffers[k] = makeBuffer(networkId, target);
   return state.buffers[k];
 }
 
@@ -193,12 +225,17 @@ export const useBuffersStore = defineStore('buffers', {
   getters: {
     list: (state) => Object.values(state.buffers),
     byKey: (state) => (k: string) => state.buffers[k] || null,
-    // True only while the buffer is live in the store. A closed buffer is
-    // dropped entirely (see drop()), so this is how callers tell "open" from
-    // "closed/parted-away" before activating — activate() would otherwise
-    // recreate an empty shell and strand the UI in a half-state.
+    // True only while a buffer for (networkId, target) is live in the store,
+    // resolved case-insensitively (#327) like its findByTarget/findDm siblings.
+    // A closed buffer is dropped entirely (see drop()), so this is how callers
+    // tell "open" from "closed/parted-away" before activating — activate() would
+    // otherwise recreate an empty shell and strand the UI in a half-state. The
+    // case fold matters because the toast/jump focus guards gate activate() on
+    // the raw server-cased target (highlight toast → event.target, friend-online
+    // → event.nick): an exact-key lookup would report a buffer that's open under
+    // a different casing as closed and refuse to focus its own notification.
     isOpen: (state) => (networkId: number | string, target: string) =>
-      !!state.buffers[`${networkId}::${target}`],
+      resolveExistingKey(state.buffers, networkId, target) !== null,
     forNetwork: (state) => (networkId: number | string) =>
       Object.values(state.buffers).filter((b) => b.networkId === networkId),
     // The open DM buffer for a (network, nick), matched case-insensitively so we
@@ -219,6 +256,19 @@ export const useBuffersStore = defineStore('buffers', {
               !b.target.startsWith(':'),
           ) ?? null
         );
+      },
+    // Resolve an already-open buffer for (networkId, target) without creating
+    // one, matching channels and DMs case-insensitively. IRC targets are
+    // case-insensitive and some servers hand us inconsistently-cased names
+    // (#289), so an exact-key lookup alone would miss the open buffer and drop
+    // ephemeral signals (e.g. typing) on the floor. Exact key is tried first as
+    // the common fast path; the folded scan only runs on a case mismatch. The
+    // flat ':'-sentinels (`:server:`, `:friends:`…) are fixed keys — exact only.
+    findByTarget:
+      (state) =>
+      (networkId: number | string, target: string): Buffer | null => {
+        const k = resolveExistingKey(state.buffers, networkId, target);
+        return k ? state.buffers[k] : null;
       },
   },
   actions: {
@@ -250,7 +300,12 @@ export const useBuffersStore = defineStore('buffers', {
       if (buf.oldestId == null && event.id != null) buf.oldestId = event.id;
       if (event.id != null) {
         const networks = useNetworksStore();
-        const isActive = networks.activeKey === `${event.networkId}::${event.target}`;
+        // Compare against the resolved buffer's canonical key, not the event's
+        // (possibly divergently-cased) target — otherwise a live DM arriving as
+        // `bob` while the user sits in the `Bob` buffer reads as inactive and
+        // the divider/read-sync below silently skips (#327). Mirrors the same
+        // resolve-then-compare applyReadState does.
+        const isActive = networks.activeKey === `${buf.networkId}::${buf.target}`;
         if (isActive) {
           // While the user is sitting in this buffer, keep the divider
           // tracking the bottom UNLESS there's already an unread boundary
@@ -269,16 +324,20 @@ export const useBuffersStore = defineStore('buffers', {
             buf.lastReadId = event.id;
             socketSend({
               type: 'mark-read',
-              networkId: event.networkId,
-              target: event.target,
+              networkId: buf.networkId,
+              target: buf.target,
               messageId: event.id,
             });
           }
         }
       }
-      if (event.nick && buf.typing[event.nick]) {
-        clearTypingTimer(event.networkId, event.target, event.nick);
-        delete buf.typing[event.nick];
+      const speakerKey = event.nick?.toLowerCase();
+      if (speakerKey && buf.typing[speakerKey]) {
+        // Key off the resolved buffer's target, not event.target — setTyping
+        // armed the expiry timer under buf.target, so a divergently-cased event
+        // would otherwise miss it and strand the timer (#327).
+        clearTypingTimer(buf.networkId, buf.target, event.nick!);
+        delete buf.typing[speakerKey];
       }
       return true;
     },
@@ -623,7 +682,26 @@ export const useBuffersStore = defineStore('buffers', {
       buf.speakers = next;
     },
     drop(networkId: number | string, target: string) {
-      delete this.buffers[key(networkId, target)];
+      // Resolve case-insensitively (#327) so a divergently-cased close target
+      // (the server doesn't canonicalize DM casing — the #327 root cause) still
+      // removes the buffer instead of silently leaving a sidebar ghost. Key all
+      // bookkeeping off the resolved buffer's canonical target below.
+      const bufKey = resolveExistingKey(this.buffers, networkId, target);
+      if (!bufKey) return;
+      const buf = this.buffers[bufKey];
+      // Cancel any pending typing-expiry timers for this buffer before it (and
+      // its typing entries) vanishes — otherwise a timer armed while a peer was
+      // typing sits in the module-level map until it fires on its own. Timers
+      // are keyed by the canonical target (setTyping uses buf.target), so the
+      // prefix has to match that, not the raw close-event casing.
+      const prefix = `${buf.networkId}::${buf.target}::`;
+      for (const [k, id] of typingTimers) {
+        if (k.startsWith(prefix)) {
+          clearTimeout(id);
+          typingTimers.delete(k);
+        }
+      }
+      delete this.buffers[bufKey];
     },
     // Called from useSessionReset before $reset(). The state reset will wipe
     // every buffer (and therefore every typing indicator), but the
@@ -701,7 +779,11 @@ export const useBuffersStore = defineStore('buffers', {
       return ok;
     },
     setJoined(networkId: number | string, target: string, joined: boolean) {
-      const buf = this.buffers[key(networkId, target)];
+      // Resolve case-insensitively (#327): channel-joined/-parted already arrive
+      // canonical from the server (canonicalChannelTarget), but fold here too so
+      // a divergently-cased target never misses the open buffer and leaves it
+      // stuck rendering dimmed.
+      const buf = this.findByTarget(networkId, target);
       if (!buf) return;
       buf.joined = !!joined;
     },
@@ -710,10 +792,24 @@ export const useBuffersStore = defineStore('buffers', {
     // — the server fires one after each countable message and after every
     // mark-read, so badges stay in sync without client-side increments.
     applyReadState(networkId: number | string, target: string, payload: any) {
-      const buf = ensureBuffer(this, networkId, target);
+      // Update an existing buffer only — never materialize one. A closed buffer
+      // is absent from the store (see isOpen), and a stray read-state broadcast
+      // for it (e.g. mark-all-read fans out over every target with history, open
+      // or not) would otherwise re-create the entry and pop it back into the
+      // sidebar (#319). findByTarget resolves case-insensitively and returns null
+      // when nothing is open, so a broadcast whose target case differs from the
+      // open buffer's key (servers hand us inconsistently-cased names, #289)
+      // still lands on the right buffer instead of silently dropping the badge —
+      // the same resolve-don't-materialize the typing path uses. Snapshot callers
+      // (replaceBacklog) ensureBuffer before delegating here.
+      const buf = this.findByTarget(networkId, target);
+      if (!buf) return;
       const lastReadId = Number(payload?.lastReadId) || 0;
       const networks = useNetworksStore();
-      const isActive = networks.activeKey === `${networkId}::${target}`;
+      // Compare against the resolved buffer's canonical key, not the (possibly
+      // differently-cased) broadcast target, so badge suppression tracks the
+      // buffer the user is actually sitting in.
+      const isActive = networks.activeKey === `${buf.networkId}::${buf.target}`;
       // Suppress the unread badge for the buffer the user is sitting in.
       // A read-state broadcast can briefly carry a non-zero unread for the
       // active buffer when an IRC event lands before the mark-read echo;
@@ -765,7 +861,17 @@ export const useBuffersStore = defineStore('buffers', {
     // focused (see pushMessage), so leaving it just drops local state.
     activate(networkId: number | string, target: string) {
       const networks = useNetworksStore();
-      const newKey = `${networkId}::${target}`;
+      // Resolve to the canonical open buffer first (case-insensitive): a DM
+      // activated from a member-list nick, /query, the profile modal, or a
+      // deep-link may carry a different casing than the buffer that's already
+      // open (#327). Focusing the raw casing would fork a duplicate via
+      // ensureBuffer and — worse — point activeKey at a key no buffer is stored
+      // under, so useActiveBuffer's byKey(activeKey) returns null and blanks the
+      // chat view. canonTarget is the existing buffer's casing, or the raw
+      // target when none is open yet (first writer's case becomes canonical).
+      const existing = this.findByTarget(networkId, target);
+      const canonTarget = existing ? existing.target : target;
+      const newKey = `${networkId}::${canonTarget}`;
       const prevKey = networks.activeKey;
       if (prevKey && prevKey !== newKey) {
         const prev = this.buffers[prevKey];
@@ -784,8 +890,8 @@ export const useBuffersStore = defineStore('buffers', {
             this.clearDetached(prev.networkId, prev.target, { wipeMessages: true });
         }
       }
-      networks.setActive(networkId, target);
-      const buf = ensureBuffer(this, networkId, target);
+      networks.setActive(networkId, canonTarget);
+      const buf = ensureBuffer(this, networkId, canonTarget);
       // Snapshot the divider from the CURRENT lastReadId before we advance
       // it below. The divider stays pinned to this snapshot for the
       // duration of the visit (cleared on switch-away).
@@ -810,7 +916,7 @@ export const useBuffersStore = defineStore('buffers', {
           socketSend({
             type: 'mark-read',
             networkId,
-            target,
+            target: canonTarget,
             messageId: lastId,
           });
         }
@@ -821,7 +927,7 @@ export const useBuffersStore = defineStore('buffers', {
       // do its own mark-read against the new tail.
       if (buf.pendingRefetch) {
         buf.pendingRefetch = false;
-        this.reattachToLive(networkId, target);
+        this.reattachToLive(networkId, canonTarget);
       } else if (
         buf.messages.length === 0 &&
         buf.hasMoreOlder &&
@@ -831,8 +937,8 @@ export const useBuffersStore = defineStore('buffers', {
         // First-load fetch. The buffer shell exists but has no messages —
         // either it's brand new (profile-modal "Send DM" to a nick we've
         // never DM'd before) or it was pre-created by a side channel
-        // (presence/typing/MONITOR events touch ensureBuffer without
-        // seeding history) and the initial backlog snapshot only covers
+        // (the channel-joined handler calls ensure() before any backlog
+        // arrives) and the initial backlog snapshot only covers
         // buffers that were already open at socket-connect. Push-notification
         // deep-links land here too, since isOpen() is satisfied by any shell
         // in the store regardless of message contents. Kick a latest fetch
@@ -845,14 +951,14 @@ export const useBuffersStore = defineStore('buffers', {
         // that leaves messages.length=0 but flips hasMoreOlder to false —
         // without this guard we'd refire the same empty fetch on every
         // re-activate.
-        this.reattachToLive(networkId, target);
+        this.reattachToLive(networkId, canonTarget);
       }
       // For DMs, ask the server to WHOIS-probe the peer so the banner/sidebar
       // dim reflect current state rather than a possibly-stale cached value.
       // The probe is silent (no /whois reply in the server buffer); only the
       // resulting peer-presence event flows back to update local state.
-      if (target && !target.startsWith('#') && !target.startsWith(':server:')) {
-        socketSend({ type: 'probe-presence', networkId, nick: target });
+      if (canonTarget && !canonTarget.startsWith('#') && !canonTarget.startsWith(':server:')) {
+        socketSend({ type: 'probe-presence', networkId, nick: canonTarget });
       }
     },
     setTyping(
@@ -863,26 +969,51 @@ export const useBuffersStore = defineStore('buffers', {
       userhost: string | null = null,
     ) {
       if (!nick) return;
-      const buf = ensureBuffer(this, networkId, target);
-      clearTypingTimer(networkId, target, nick);
+      // Resolve to an *existing* buffer only — a typing tag (TAGMSG +typing)
+      // must never materialize a phantom DM buffer for a peer who never
+      // actually messages us; the incoming PRIVMSG is what opens a DM (#292).
+      // findByTarget matches channels and DMs case-insensitively, so a tag
+      // whose target case differs from the open buffer still lands rather than
+      // being dropped — whether that's a DM /query'd as `bob` vs a server-
+      // reported `Bob`, or a server echoing `#Chan` for a buffer joined as
+      // `#chan` (inconsistent server casing has bitten us before, #289). An
+      // unknown nick/channel simply has its typing notice dropped until there's
+      // a real message.
+      const buf = this.findByTarget(networkId, target);
+      // Key all timer bookkeeping off the resolved buffer's actual target, not
+      // the event's nick case, so the clear/set/expiry callbacks all line up on
+      // the same buffer. Falls back to the raw target when there's no buffer.
+      const tkTarget = buf ? buf.target : target;
+      // Cancel any pending expiry timer first, unconditionally: the buffer may
+      // have been closed while a timer was still pending, and the early-return
+      // below would otherwise strand that timer until it expires on its own.
+      // clearTypingTimer is a no-op when there's no timer for this nick.
+      clearTypingTimer(networkId, tkTarget, nick);
+      if (!buf) return;
 
-      if (state === 'done') {
-        delete buf.typing[nick];
+      // Canonical (lowercased) map key so case-variant tags from one peer share
+      // a single entry; the display nick rides along in the value (see
+      // TypingEntry). Matches the lowercasing typingKey() already applies.
+      const canon = nick.toLowerCase();
+      const duration = TYPING_DURATIONS[state];
+      if (!duration) {
+        // 'done', or any unrecognized +typing value a client might send: stop
+        // showing this peer as typing. Returning without this delete (the old
+        // behavior for unknown states) stranded the prior entry with no live
+        // timer to expire it — a permanently stuck indicator.
+        delete buf.typing[canon];
         return;
       }
-
-      const duration = TYPING_DURATIONS[state];
-      if (!duration) return;
-      buf.typing[nick] = { state, expiresAt: Date.now() + duration, userhost };
+      buf.typing[canon] = { nick, state, expiresAt: Date.now() + duration, userhost };
 
       const timer = setTimeout(() => {
-        const b = this.buffers[key(networkId, target)];
-        if (b && b.typing[nick]) {
-          delete b.typing[nick];
+        const b = this.buffers[key(networkId, tkTarget)];
+        if (b && b.typing[canon]) {
+          delete b.typing[canon];
         }
-        typingTimers.delete(typingKey(networkId, target, nick));
+        typingTimers.delete(typingKey(networkId, tkTarget, nick));
       }, duration);
-      typingTimers.set(typingKey(networkId, target, nick), timer);
+      typingTimers.set(typingKey(networkId, tkTarget, nick), timer);
     },
   },
 });
